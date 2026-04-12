@@ -948,6 +948,9 @@
             // 1. Update snapshots for existing notifications using fresh API data
             for (const notif of notifs) {
                 if (!notif.title) continue;
+                // Si la campaña/juego ya no tiene drops en la API (expiró), no notificar
+                const entry = _findEntryForTitle(notif.title);
+                if (!entry || !entry.drops || entry.drops.length === 0) continue;
                 const dataSnapshot = buildDataSnapshot(notif.title);
                 if (dataSnapshot && notif.dataSnapshot !== dataSnapshot) {
                     notif.changed = true;
@@ -2659,6 +2662,11 @@
                 const notifs = getNotifications();
                 let existingNotif = notifs.find((n) => n.key === computedKey) || notifs.find((n) => n.title === displayTitle);
                 if (_apiDataReady) {
+                    // Si la campaña ya no tiene drops activos en la API (expiró), no notificar cambio
+                    const entry = _findEntryForTitle(displayTitle);
+                    if (!entry || !entry.drops || entry.drops.length === 0) {
+                        if (existingNotif) changedFlag = !existingNotif.seen && existingNotif.changed;
+                    } else {
                     const dataSnapshot = buildDataSnapshot(displayTitle);
                     if (existingNotif) {
                         // Siempre actualizar key/id por si cambio el orden del DOM
@@ -2686,6 +2694,7 @@
                         notifs.push(newN);
                         saveNotifications(notifs);
                         changedFlag = true;
+                    }
                     }
                 } else if (existingNotif) {
                     changedFlag = !existingNotif.seen && existingNotif.changed;
