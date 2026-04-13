@@ -1987,6 +1987,48 @@
         // CAMPAIGN CARD RENDERING (Kick-style)
         // =============================================
 
+        // Scrolls the page so the campaign header (button with category image,
+        // title, studio and date range) is centered, instead of centering the
+        // full campaign container (which can be very tall when expanded and ends
+        // up pushing the visible header off screen).
+        function scrollToCampaignElement(node, block = "center") {
+            if (!node) return;
+            const header = node.querySelector('button[data-radix-collection-item]') ||
+                           node.querySelector('button[aria-expanded]') ||
+                           node;
+            header.scrollIntoView({ behavior: "smooth", block });
+        }
+
+        // Finds a campaign node on the /all-campaigns page from a pending-click
+        // descriptor ({id, title}). The id may be stale after re-scans (each
+        // highlightAndLinkDrops clears and reassigns drop-match-* ids), so we
+        // fall back to matching by display title against the freshly scanned
+        // nodes.
+        function findCampaignNodeFromClickInfo(info) {
+            if (!info) return null;
+            if (info.id) {
+                const byId = document.getElementById(info.id);
+                if (byId) return byId;
+            }
+            if (!info.title) return null;
+            const wanted = info.title.toLowerCase();
+            const scanned = document.querySelectorAll('[id^="drop-match-"]');
+            for (const n of scanned) {
+                const nameEl = n.querySelector('.text-base.font-bold') ||
+                               n.querySelector('[class*="font-bold"]');
+                if (!nameEl) continue;
+                const nameText = nameEl.textContent.trim();
+                const studioEl = n.querySelector('.text-secondary-onSecondaryVariant') ||
+                                 n.querySelector('.text-start.text-sm');
+                const studioText = (studioEl && studioEl !== nameEl) ? studioEl.textContent.trim() : '';
+                const displayTitle = studioText ? `${nameText} - ${studioText}` : nameText;
+                if (displayTitle.toLowerCase() === wanted || nameText.toLowerCase() === wanted) {
+                    return n;
+                }
+            }
+            return null;
+        }
+
         function renderCampaignCard(campaign, isActive) {
             const accentColor = isActive ? colors.primary : colors.red;
             const card = document.createElement("div");
@@ -2111,11 +2153,11 @@
             // Click to scroll to element on page
             card.onclick = () => {
                 if (campaign.element && document.contains(campaign.element)) {
-                    campaign.element.scrollIntoView({ behavior: "smooth", block: "center" });
+                    scrollToCampaignElement(campaign.element, "center");
                 } else if (campaign.id) {
                     const target = document.getElementById(campaign.id);
                     if (target) {
-                        target.scrollIntoView({ behavior: "smooth", block: "center" });
+                        scrollToCampaignElement(target, "center");
                     }
                 }
                 // If not on campaigns page, navigate there
@@ -2309,29 +2351,34 @@
                             location.href = "https://kick.com/drops/all-campaigns";
                         }
                     } else {
-                        // Scroll to matching card in panel
-                        const panes = ["kick-drops-active-pane", "kick-drops-expired-pane"];
-                        let found = false;
-                        for (const paneId of panes) {
-                            if (found) break;
-                            const pane = document.getElementById(paneId);
-                            if (pane) {
+                        // Scroll the page to the actual campaign header on /all-campaigns
+                        let pageScrolled = false;
+                        if (notifId) {
+                            const target = document.getElementById(notifId);
+                            if (target) {
+                                scrollToCampaignElement(target, "center");
+                                pageScrolled = true;
+                            }
+                        }
+                        // Also scroll the floating panel to the matching card
+                        // (skip if page scroll succeeded and there's no separate panel card,
+                        // to avoid fighting the page scroll)
+                        if (!pageScrolled) {
+                            const panes = ["kick-drops-active-pane", "kick-drops-expired-pane"];
+                            for (const paneId of panes) {
+                                const pane = document.getElementById(paneId);
+                                if (!pane) continue;
                                 const cards = pane.querySelectorAll("[data-notif-id], [data-notif-title]");
+                                let matched = false;
                                 for (const card of cards) {
                                     if ((notifId && card.getAttribute("data-notif-id") === notifId) ||
                                         (notifTitle && card.getAttribute("data-notif-title") === notifTitle)) {
                                         card.scrollIntoView({ behavior: "smooth", block: "center" });
-                                        found = true;
+                                        matched = true;
                                         break;
                                     }
                                 }
-                            }
-                        }
-                        // Fallback: scroll to element on page
-                        if (!found && notifId) {
-                            const target = document.getElementById(notifId);
-                            if (target) {
-                                target.scrollIntoView({ behavior: "smooth", block: "center" });
+                                if (matched) break;
                             }
                         }
                     }
@@ -2477,10 +2524,13 @@
                 const clickInterval = setInterval(() => {
                     attempts++;
                     let found = false;
-                    // Try to find actual page element by ID
-                    const target = document.getElementById(divIdClickAfterClick.id);
+                    // Try to find the actual page element — by ID first, and
+                    // fall back to matching the campaign title because ids are
+                    // reassigned on every scan and may no longer match the one
+                    // captured before this navigation.
+                    const target = findCampaignNodeFromClickInfo(divIdClickAfterClick);
                     if (target) {
-                        target.scrollIntoView({ behavior: "smooth", block: "start" });
+                        scrollToCampaignElement(target, "center");
                         found = true;
                     }
                     // Also try to find matching card in panel by data-notif-id or data-notif-title
