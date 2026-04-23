@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.1.0
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.0.0";
+    const SCRIPT_VERSION = "1.1.0";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -744,7 +744,7 @@
         const ORIGINAL_TITLE = document.title || (document.querySelector('title') ? document.querySelector('title').textContent : '');
 
         const NOTIFICATION_BEEP_INTERVAL_MS = 5000;
-        const NOTIFICATION_VOLUME = 1;
+        const NOTIFICATION_VOLUME = 0.75;
 
         // Kick section header texts for open/closed campaign detection (i18n)
         const OPEN_HEADER_TEXTS = [
@@ -753,7 +753,7 @@
             "Offene Kampagnen",
             "Campañas abiertas",
             "Avaa kampanjat",
-            "Campagnes ouvertes",
+            "Campagnes aperte",
             "सक्रिय अभियान",
             "Buka kampanye",
             "進行中のキャンペーン",
@@ -772,7 +772,7 @@
             "Geschlossene Kampagnen",
             "Campañas cerradas",
             "Suljetut kampanjat",
-            "Campagnes fermées",
+            "Campagnes chiuse",
             "समाप्त अभियान",
             "Kampanye Tertutup",
             "終了したキャンペーン",
@@ -782,7 +782,7 @@
             "Закрытые кампании",
             "Kapalı kampanyalar",
             "Các chiến dịch đã đóng",
-            "已關閉的廣告活動"
+            "已关闭的广告活动"
         ];
 
         const ACTIVE_STYLE = `border: 4px solid #3ad900 !important; box-shadow: 0 0 30px #53fc18 !important; border-radius: 16px !important; scroll-margin-top: 100px;`;
@@ -2996,6 +2996,15 @@
             "lunastettu", "đã nhận", "已领取", "تم المطالبة", "दावा किया गया", "diklaim",
         ];
 
+        // Localized texts for the "Expired" section heading on the Kick inventory page.
+        // Matched case-insensitively against the exact trimmed text of the <h1>.
+        const EXPIRED_HEADER_TEXTS = [
+            "expiró", "expired", "abgelaufen", "expiré", "expirou", "expirado",
+            "scaduto", "истекшие", "süresi dolan", "期限切れ", "만료됨",
+            "wygasłe", "vanhentunut", "hết hạn", "已过期", "已過期",
+            "انتهت صلاحيته", "समाप्त हो गया", "kedaluwarsa", "หมดอายุ",
+        ];
+
         /**
          * cleanInventory()
          *
@@ -3015,6 +3024,18 @@
 
             const checker = setInterval(() => {
                 attempts++;
+
+                // Hide the whole "Expiró" section (heading + all campaigns under it).
+                // Kick groups already-expired campaigns under a localized <h1> sibling of the campaigns list.
+                if (type === "expired") {
+                    document.querySelectorAll('h1').forEach((h1) => {
+                        const text = (h1.textContent || '').trim().toLowerCase();
+                        if (!text) return;
+                        if (!EXPIRED_HEADER_TEXTS.some(t => text === t)) return;
+                        const section = h1.parentElement;
+                        if (section) section.style.display = 'none';
+                    });
+                }
 
                 // Find all campaign accordion containers in the inventory
                 const campaignContainers = document.querySelectorAll('.bg-surface-base');
