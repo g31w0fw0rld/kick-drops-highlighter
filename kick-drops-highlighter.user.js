@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.1.1
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,16 +19,19 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.1.0";
+    const SCRIPT_VERSION = "1.1.1";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
     // CLAIMED DROPS DATA (shared between interceptor and explicit fetch)
     // =============================================
     let _interceptedClaimedCampaigns = [];
+    let _interceptedAllCampaigns = []; // full /drops/progress response (claimed + in progress)
     let _claimedInventoryReady = false;
+    let _progressInventoryReady = false;
     let _kickAuthToken = null;
     let _onClaimedDataReady = null; // callback set from inside load listener
+    let _onProgressDataReady = null;
     const KICK_DROPS_PROGRESS_URL = 'https://web.kick.com/api/v1/drops/progress';
 
     // Intercept the PAGE's fetch (unsafeWindow) to capture Kick's own API calls
@@ -58,12 +61,17 @@
                 const clone = response.clone();
                 clone.json().then(data => {
                     if (data?.data && Array.isArray(data.data)) {
+                        _interceptedAllCampaigns = data.data;
                         _interceptedClaimedCampaigns = data.data.filter(c =>
                             c.rewards && c.rewards.some(r => r.claimed)
                         );
                         _claimedInventoryReady = true;
+                        _progressInventoryReady = true;
                         if (_onClaimedDataReady && location.pathname.includes('/inventory')) {
                             setTimeout(() => _onClaimedDataReady(), 500);
+                        }
+                        if (_onProgressDataReady && location.pathname.includes('/inventory')) {
+                            setTimeout(() => _onProgressDataReady(), 500);
                         }
                     }
                 }).catch(() => { });
@@ -142,6 +150,11 @@
                 resumeProgress: "Para reanudar el progreso, visita",
                 liveChannels: "cualquiera de los canales participantes en vivo",
                 noClaimedDrops: "No hay drops reclamados aún.",
+                timeRemaining: "Tiempo restante",
+                progress: "Progreso",
+                rewards: "Recompensas",
+                minutesShort: "min",
+                dropDetails: "Detalle del drop",
             },
             en: {
                 collapse: "Collapse",
@@ -204,6 +217,11 @@
                 resumeProgress: "To resume progress, visit",
                 liveChannels: "any of the participating live channels",
                 noClaimedDrops: "No claimed drops yet.",
+                timeRemaining: "Time remaining",
+                progress: "Progress",
+                rewards: "Rewards",
+                minutesShort: "min",
+                dropDetails: "Drop details",
             },
             de: {
                 collapse: "Einklappen", expand: "Ausklappen", addKeyword: "Keyword hinzufügen",
@@ -2806,12 +2824,15 @@
                         }
                         const data = JSON.parse(response.responseText);
                         if (data?.data && Array.isArray(data.data)) {
+                            _interceptedAllCampaigns = data.data;
                             _interceptedClaimedCampaigns = data.data.filter(c =>
                                 c.rewards && c.rewards.some(r => r.claimed)
                             );
                             _claimedInventoryReady = true;
+                            _progressInventoryReady = true;
                             if (location.pathname.includes('/inventory')) {
                                 _renderClaimedInventory();
+                                _buildKickProgressMap();
                             }
                         }
                     } catch (e) { console.warn('[Kick Drops] Error parsing claimed inventory:', e); }
@@ -2977,6 +2998,323 @@
             }
         }
 
+        // =============================================
+        // TOOLTIP + MODAL: TIEMPO RESTANTE EN DROPS EN PROGRESO
+        // =============================================
+
+        // campaignName -> { progress_units, rewards: [...] }
+        // Indexar por reward.name colisiona: una sola campaña tiene varias rewards
+        // con el mismo `name` y distinto `required_units` (e.g. "x1 entry" / "x10
+        // entries" repetidos en ED'S DROP). Por eso indexamos por campaña; la
+        // reward concreta se busca por (name + required_units) al resolver.
+        let _kickCampaigns = {};
+
+        function _buildKickProgressMap() {
+            _kickCampaigns = {};
+            for (const c of _interceptedAllCampaigns) {
+                if (!c || !c.name) continue;
+                _kickCampaigns[c.name] = {
+                    progress_units: Number(c.progress_units) || 0,
+                    rewards: (c.rewards || []).filter(r => r && !r.claimed),
+                };
+            }
+        }
+
+        function formatHoursMinutes(totalMinutes) {
+            const m = Math.max(0, Math.round(totalMinutes));
+            const h = Math.floor(m / 60);
+            const mm = m % 60;
+            if (h <= 0) return `${mm}m`;
+            if (mm <= 0) return `${h}h`;
+            return `${h}h ${mm}m`;
+        }
+
+        // Parse total required minutes from the LI's "X% de N h" / "N hours" text.
+        // Combines hours+minutes when both are present.
+        function _parseRequiredFromKickLi(li) {
+            const statusSpan = li.querySelector('.text-surface-onSurfaceSecondary');
+            const txt = statusSpan ? (statusSpan.textContent || '').toLowerCase() : '';
+            let h = 0, m = 0;
+            const mHours = txt.match(/(\d+(?:[.,]\d+)?)\s*(?:hours?|horas?|stunden?|heures?|ore|godzin|h\b)/);
+            if (mHours) h = parseFloat(mHours[1].replace(',', '.'));
+            const mMin = txt.match(/(\d+)\s*(?:minutes?|minutos?|min\b)/);
+            if (mMin) m = parseInt(mMin[1], 10);
+            if (h <= 0 && m <= 0) return 0;
+            return Math.round(h * 60) + m;
+        }
+
+        // Parse the visible percentage from "7% de 1 h" — used as a fallback when
+        // the API hasn't been intercepted yet. Kick's progressbar element does not
+        // expose `aria-valuenow` (it's always 0), so this text is the only DOM
+        // source for the current percentage.
+        function _parsePercentFromKickLi(li) {
+            const statusSpan = li.querySelector('.text-surface-onSurfaceSecondary');
+            const txt = statusSpan ? (statusSpan.textContent || '') : '';
+            const m = txt.match(/(\d+(?:[.,]\d+)?)\s*%/);
+            return m ? parseFloat(m[1].replace(',', '.')) : NaN;
+        }
+
+        function _findCampaignNameForKickLi(li) {
+            const container = li.closest('.bg-surface-base');
+            if (!container) return '';
+            const nameEl = container.querySelector('.text-base.font-bold') ||
+                container.querySelector('[class*="font-bold"]');
+            return nameEl ? nameEl.textContent.trim() : '';
+        }
+
+        let _kickTooltipEl = null;
+        function _ensureKickTooltip() {
+            if (_kickTooltipEl && document.body.contains(_kickTooltipEl)) return _kickTooltipEl;
+            const el = document.createElement('div');
+            el.id = 'kick-drop-tooltip';
+            Object.assign(el.style, {
+                position: 'fixed', top: '0', left: '0', zIndex: '999999',
+                background: colors.surface, color: colors.text,
+                border: `1px solid ${colors.primary}`, borderRadius: '8px',
+                padding: '6px 10px', fontSize: '12px', fontWeight: '600',
+                fontFamily: 'Inter, system-ui, sans-serif',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+                pointerEvents: 'none', opacity: '0',
+                transition: 'opacity 120ms ease', whiteSpace: 'nowrap',
+            });
+            document.body.appendChild(el);
+            _kickTooltipEl = el;
+            return el;
+        }
+
+        function _showKickTooltip(text) {
+            const el = _ensureKickTooltip();
+            el.textContent = text;
+            el.style.opacity = '1';
+        }
+
+        function _moveKickTooltip(e) {
+            const el = _ensureKickTooltip();
+            const pad = 12;
+            const w = el.offsetWidth;
+            const h = el.offsetHeight;
+            let x = e.clientX + pad;
+            let y = e.clientY + pad;
+            if (x + w + 4 > window.innerWidth) x = e.clientX - w - pad;
+            if (y + h + 4 > window.innerHeight) y = e.clientY - h - pad;
+            el.style.left = `${Math.max(0, x)}px`;
+            el.style.top = `${Math.max(0, y)}px`;
+        }
+
+        function _hideKickTooltip() {
+            if (_kickTooltipEl) _kickTooltipEl.style.opacity = '0';
+        }
+
+        function _resolveKickProgress(li, rewardName) {
+            // `required` viene del DOM (texto "X% de N h") porque la API tiene
+            // varias rewards con el mismo `name` y distinto `required_units` en
+            // la misma campaña — no se puede desambiguar solo por nombre.
+            const required = _parseRequiredFromKickLi(li);
+            if (required <= 0) return null;
+
+            const campaignName = _findCampaignNameForKickLi(li);
+            const campaign = campaignName ? _kickCampaigns[campaignName] : null;
+
+            // `current` = `progress_units` de la campaña (minutos vistos
+            // acumulados). El response confirma que se popula incluso para
+            // campañas en progreso (ED'S DROP -> 4). El `aria-valuenow` del
+            // progressbar de Kick siempre es 0, así que NO se usa.
+            let current = campaign ? campaign.progress_units : 0;
+
+            // Fallback: si la API aún no llegó, calcular desde el % visible.
+            if (!campaign) {
+                const pct = _parsePercentFromKickLi(li);
+                if (Number.isFinite(pct)) current = Math.round(required * (pct / 100));
+            }
+
+            // Buscar la reward exacta por (name + required_units) para metadata.
+            let imageUrl = '';
+            if (campaign) {
+                const matchedReward = (campaign.rewards || []).find(r =>
+                    r.name === rewardName && Number(r.required_units) === required
+                );
+                if (matchedReward && matchedReward.image_url) {
+                    imageUrl = KICK_CDN_BASE + matchedReward.image_url;
+                }
+            }
+
+            return {
+                current,
+                required,
+                rewardName: rewardName || '',
+                imageUrl,
+                campaignName,
+            };
+        }
+
+        function createKickModal() {
+            const overlay = document.createElement('div');
+            Object.assign(overlay.style, {
+                position: 'fixed', left: '0', top: '0', width: '100%', height: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: 'rgba(0,0,0,0.6)', zIndex: '999999',
+                transition: 'opacity 180ms ease', opacity: '0',
+            });
+            const box = document.createElement('div');
+            Object.assign(box.style, {
+                backgroundColor: colors.surface, color: colors.text, borderRadius: '14px',
+                padding: '24px 28px', minWidth: '320px', maxWidth: '480px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)', border: `1px solid ${colors.primary}`,
+                fontFamily: 'Inter, system-ui, sans-serif', fontSize: '14px',
+                transition: 'transform 180ms ease, opacity 180ms ease',
+                transform: 'translateY(8px) scale(0.98)', opacity: '0',
+            });
+            overlay.appendChild(box);
+            return { overlay, box };
+        }
+
+        function closeKickModal(overlay) {
+            return new Promise((resolve) => {
+                try {
+                    overlay.style.opacity = '0';
+                    const box = overlay.firstChild;
+                    if (box) {
+                        box.style.transform = 'translateY(-8px) scale(0.98)';
+                        box.style.opacity = '0';
+                    }
+                } catch (e) { /* noop */ }
+                setTimeout(() => {
+                    try { if (overlay.parentElement) overlay.parentElement.removeChild(overlay); } catch (e) { /* noop */ }
+                    resolve();
+                }, 220);
+            });
+        }
+
+        function openKickDropModal(li, rewardName) {
+            const progress = _resolveKickProgress(li, rewardName);
+            if (!progress) return;
+            const remaining = Math.max(0, progress.required - progress.current);
+            const pct = progress.required > 0
+                ? Math.round((progress.current / progress.required) * 100)
+                : 0;
+
+            const { overlay, box } = createKickModal();
+            box.style.minWidth = '320px';
+            box.style.padding = '24px 28px';
+
+            // Header con imagen + título + subtítulo "Detalle del drop"
+            // (mismo layout que el modal de Twitch).
+            const header = document.createElement('div');
+            Object.assign(header.style, { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' });
+            const liImg = li.querySelector('img');
+            const imgSrc = progress.imageUrl || (liImg ? liImg.src : '');
+            if (imgSrc) {
+                const img = document.createElement('img');
+                img.src = imgSrc;
+                Object.assign(img.style, {
+                    width: '56px', height: '56px', borderRadius: '8px', objectFit: 'cover',
+                    border: `1px solid ${colors.border}`,
+                });
+                header.appendChild(img);
+            }
+            const titleWrap = document.createElement('div');
+            const title = document.createElement('div');
+            title.textContent = progress.rewardName || progress.campaignName || t.dropDetails;
+            Object.assign(title.style, { fontSize: '16px', fontWeight: '700', color: colors.text });
+            titleWrap.appendChild(title);
+            const subtitle = document.createElement('div');
+            subtitle.textContent = t.dropDetails;
+            Object.assign(subtitle.style, { fontSize: '11px', color: colors.gray, marginTop: '2px' });
+            titleWrap.appendChild(subtitle);
+            header.appendChild(titleWrap);
+            box.appendChild(header);
+
+            const lineProgress = document.createElement('div');
+            lineProgress.style.marginBottom = '6px';
+            lineProgress.innerHTML = `<span style="color:${colors.gray}">${t.progress}:</span> <span style="font-weight:600">${progress.current} / ${progress.required} ${t.minutesShort} · ${pct}%</span>`;
+            box.appendChild(lineProgress);
+
+            const lineRemaining = document.createElement('div');
+            lineRemaining.style.marginBottom = '12px';
+            lineRemaining.innerHTML = `<span style="color:${colors.gray}">${t.timeRemaining}:</span> <span style="font-weight:700;color:${colors.primary}">${formatHoursMinutes(remaining)}</span>`;
+            box.appendChild(lineRemaining);
+
+            // Sección "Recompensas:" — espeja a Twitch. En Kick cada tier es una
+            // recompensa individual (no hay benefitEdges separados), así que la
+            // lista contiene solo el reward del tier hovereado.
+            if (progress.rewardName) {
+                const rewardsTitle = document.createElement('div');
+                rewardsTitle.textContent = `${t.rewards}:`;
+                Object.assign(rewardsTitle.style, { color: colors.gray, fontSize: '12px', marginBottom: '4px' });
+                box.appendChild(rewardsTitle);
+                const ul = document.createElement('ul');
+                Object.assign(ul.style, { margin: '0 0 12px 0', paddingLeft: '18px' });
+                const liEl = document.createElement('li');
+                liEl.textContent = progress.rewardName;
+                liEl.style.fontSize = '13px';
+                ul.appendChild(liEl);
+                box.appendChild(ul);
+            }
+
+            const actions = document.createElement('div');
+            Object.assign(actions.style, { display: 'flex', justifyContent: 'flex-end', gap: '8px' });
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = t.accept || 'OK';
+            Object.assign(closeBtn.style, {
+                padding: '6px 12px', backgroundColor: colors.surface,
+                color: colors.primary, border: `1px solid ${colors.primary}`,
+                borderRadius: '6px', cursor: 'pointer', fontWeight: '600',
+            });
+            closeBtn.onclick = () => closeKickModal(overlay);
+            actions.appendChild(closeBtn);
+            box.appendChild(actions);
+
+            overlay.addEventListener('click', (ev) => {
+                if (ev.target === overlay) closeKickModal(overlay);
+            });
+            const onKey = (ev) => {
+                if (ev.key === 'Escape') {
+                    closeKickModal(overlay);
+                    document.removeEventListener('keydown', onKey);
+                }
+            };
+            document.addEventListener('keydown', onKey);
+
+            document.body.appendChild(overlay);
+            requestAnimationFrame(() => {
+                overlay.style.opacity = '1';
+                box.style.transform = 'translateY(0) scale(1)';
+                box.style.opacity = '1';
+            });
+            setTimeout(() => closeBtn.focus(), 100);
+        }
+
+        function attachKickDropTooltipAndModal(li, rewardName) {
+            if (!li || li.dataset.dropTooltipAttached === 'true') return;
+            li.dataset.dropTooltipAttached = 'true';
+            li.style.cursor = 'pointer';
+
+            li.addEventListener('mouseenter', (e) => {
+                const progress = _resolveKickProgress(li, rewardName);
+                if (!progress) return;
+                const remaining = Math.max(0, progress.required - progress.current);
+                _showKickTooltip(`${t.timeRemaining}: ${formatHoursMinutes(remaining)}`);
+                _moveKickTooltip(e);
+            });
+            li.addEventListener('mousemove', _moveKickTooltip);
+            li.addEventListener('mouseleave', _hideKickTooltip);
+            li.addEventListener('click', (e) => {
+                if (e.target.closest('a, button, input')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                _hideKickTooltip();
+                openKickDropModal(li, rewardName);
+            });
+        }
+
+        // Register progress-data callback for the document-start interceptor
+        _onProgressDataReady = _buildKickProgressMap;
+
+        // If progress data was already intercepted before load fired, build the map now
+        if (_progressInventoryReady && _interceptedAllCampaigns.length > 0) {
+            _buildKickProgressMap();
+        }
+
         // Register callback so the fetch interceptor (outside load listener) can trigger render
         _onClaimedDataReady = _renderClaimedInventory;
 
@@ -3125,6 +3463,10 @@
                             } else {
                                 // loading/indeterminate = in progress
                                 allClaimedOrComplete = false;
+                                // Attach hover-tooltip + click-modal showing remaining time
+                                const rewardNameEl = li.querySelector('p.text-sm.font-bold, [class*="font-bold"]');
+                                const rewardName = rewardNameEl ? rewardNameEl.textContent.trim() : '';
+                                attachKickDropTooltipAndModal(li, rewardName);
                             }
                         } else {
                             // No progressbar - check if already claimed via text
