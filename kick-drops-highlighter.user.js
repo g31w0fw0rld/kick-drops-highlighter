@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.1.2
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.1.1";
+    const SCRIPT_VERSION = "1.1.2";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -106,6 +106,7 @@
                 noResults: "No se encontraron campanas relacionadas con tus keywords.",
                 dropsActive: "Drops Abiertos",
                 dropsExpired: "Drops Cerrados",
+                dropsUpcoming: "Drops Próximos",
                 dropsNone: "0 Drops encontrados",
                 editPrompt: "Palabras clave separadas por coma:",
                 waitMessage: "Si no ves resultados, edita las keywords o espera a que cargue Twitch Drops. Si estas en el inventario, dirigete a campañas.",
@@ -173,6 +174,7 @@
                 noResults: "No drops matched your keywords.",
                 dropsActive: "Active Drops",
                 dropsExpired: "Expired Drops",
+                dropsUpcoming: "Upcoming Drops",
                 dropsNone: "0 Drops found",
                 editPrompt: "Comma-separated keywords:",
                 waitMessage: "If no results show up, edit the keywords or wait for Twitch Drops to load. If you are in the inventory, go to campaigns.",
@@ -233,7 +235,7 @@
                 keywordsModified: "Keywords modified. These are the current keywords: ",
                 reloading: "Neu laden...", currentKeywords: "Aktuelle Keywords (klicken zum Löschen):",
                 noResults: "Keine Drops gefunden.", dropsActive: "Offene Drops",
-                dropsExpired: "Geschlossene Drops", dropsNone: "0 Drops gefunden",
+                dropsExpired: "Geschlossene Drops", dropsUpcoming: "Kommende Drops", dropsNone: "0 Drops gefunden",
                 editPrompt: "Kommagetrennte Keywords:",
                 waitMessage: "Wenn keine Ergebnisse angezeigt werden, bearbeite die Keywords oder warte auf das Laden der Seite.",
                 changeMessage: "Wechsle zu Kampagnen, um aktive Drops zu sehen.",
@@ -271,6 +273,7 @@
                 reloading: "Rechargement...", currentKeywords: "Mots-clés actuels (cliquez pour supprimer) :",
                 noResults: "Aucun drop ne correspond à vos mots-clés.",
                 dropsActive: "Drops ouverts", dropsExpired: "Drops fermés",
+                dropsUpcoming: "Drops à venir",
                 dropsNone: "0 drops trouvés", editPrompt: "Mots-clés séparés par des virgules :",
                 waitMessage: "Si aucun résultat n'apparaît, modifiez les mots-clés ou attendez le chargement.",
                 changeMessage: "Passez aux campagnes pour voir les drops actifs.",
@@ -308,6 +311,7 @@
                 reloading: "Recarregando...", currentKeywords: "Keywords atuais (clique para deletar):",
                 noResults: "Nenhum drop encontrado com suas keywords.",
                 dropsActive: "Drops Abertos", dropsExpired: "Drops Fechados",
+                dropsUpcoming: "Drops Próximos",
                 dropsNone: "0 drops encontrados", editPrompt: "Keywords separadas por vírgula:",
                 waitMessage: "Se não aparecerem resultados, edite as keywords ou aguarde o carregamento.",
                 changeMessage: "Mude para campanhas para ver drops ativos.",
@@ -344,7 +348,7 @@
                 keywordsModified: "Keywords modified. These are the current keywords: ",
                 reloading: "Перезагрузка...", currentKeywords: "Текущие ключевые слова (нажмите для удаления):",
                 noResults: "Дропы не найдены.", dropsActive: "Открытые дропы",
-                dropsExpired: "Закрытые дропы", dropsNone: "0 дропов найдено",
+                dropsExpired: "Закрытые дропы", dropsUpcoming: "Предстоящие дропы", dropsNone: "0 дропов найдено",
                 editPrompt: "Ключевые слова через запятую:",
                 waitMessage: "Если результатов нет, измените ключевые слова или дождитесь загрузки.",
                 changeMessage: "Перейдите к кампаниям для просмотра активных дропов.",
@@ -382,6 +386,7 @@
                 reloading: "Yeniden yükleniyor...", currentKeywords: "Mevcut anahtar kelimeler (silmek için tıklayın):",
                 noResults: "Anahtar kelimelerinize uygun drop bulunamadı.",
                 dropsActive: "Açık Drops", dropsExpired: "Kapalı Drops",
+                dropsUpcoming: "Yaklaşan Drops",
                 dropsNone: "0 drop bulundu", editPrompt: "Virgülle ayrılmış anahtar kelimeler:",
                 waitMessage: "Sonuç görünmüyorsa anahtar kelimeleri düzenleyin veya sayfanın yüklenmesini bekleyin.",
                 changeMessage: "Aktif dropları görmek için kampanyalara geçin.",
@@ -419,6 +424,7 @@
                 reloading: "再読み込み中...", currentKeywords: "現在のキーワード（クリックで削除）:",
                 noResults: "キーワードに一致するドロップはありません。",
                 dropsActive: "アクティブなドロップ", dropsExpired: "終了したドロップ",
+                dropsUpcoming: "近日公開のドロップ",
                 dropsNone: "0ドロップ", editPrompt: "カンマ区切りのキーワード:",
                 waitMessage: "結果が表示されない場合は、キーワードを編集するか、ページの読み込みを待ってください。",
                 changeMessage: "アクティブなドロップを見るにはキャンペーンに切り替えてください。",
@@ -456,6 +462,7 @@
                 reloading: "새로고침 중...", currentKeywords: "현재 키워드 (클릭하여 삭제):",
                 noResults: "키워드와 일치하는 드롭이 없습니다.",
                 dropsActive: "활성 드롭", dropsExpired: "종료된 드롭",
+                dropsUpcoming: "예정된 드롭",
                 dropsNone: "0개의 드롭", editPrompt: "쉼표로 구분된 키워드:",
                 waitMessage: "결과가 표시되지 않으면 키워드를 편집하거나 페이지 로딩을 기다려주세요.",
                 changeMessage: "활성 드롭을 보려면 캠페인으로 전환하세요.",
@@ -493,6 +500,7 @@
                 reloading: "Przeładowywanie...", currentKeywords: "Aktualne słowa kluczowe (kliknij aby usunąć):",
                 noResults: "Nie znaleziono dropów pasujących do słów kluczowych.",
                 dropsActive: "Otwarte dropy", dropsExpired: "Zamknięte dropy",
+                dropsUpcoming: "Nadchodzące dropy",
                 dropsNone: "0 dropów", editPrompt: "Słowa kluczowe oddzielone przecinkami:",
                 waitMessage: "Jeśli nie widzisz wyników, edytuj słowa kluczowe lub poczekaj na załadowanie strony.",
                 changeMessage: "Przejdź do kampanii, aby zobaczyć aktywne dropy.",
@@ -530,6 +538,7 @@
                 reloading: "Ladataan uudelleen...", currentKeywords: "Nykyiset avainsanat (klikkaa poistaaksesi):",
                 noResults: "Avainsanoihin sopivia droppeja ei löytynyt.",
                 dropsActive: "Avoimet dropit", dropsExpired: "Suljetut dropit",
+                dropsUpcoming: "Tulevat dropit",
                 dropsNone: "0 droppia", editPrompt: "Avainsanat pilkulla eroteltuina:",
                 waitMessage: "Jos tuloksia ei näy, muokkaa avainsanoja tai odota sivun latautumista.",
                 changeMessage: "Vaihda kampanjoihin nähdäksesi aktiiviset dropit.",
@@ -567,6 +576,7 @@
                 reloading: "Đang tải lại...", currentKeywords: "Từ khóa hiện tại (nhấp để xóa):",
                 noResults: "Không tìm thấy drop nào khớp.",
                 dropsActive: "Drop đang mở", dropsExpired: "Drop đã đóng",
+                dropsUpcoming: "Drop sắp tới",
                 dropsNone: "0 drop", editPrompt: "Từ khóa phân cách bằng dấu phẩy:",
                 waitMessage: "Nếu không có kết quả, hãy sửa từ khóa hoặc đợi trang tải xong.",
                 changeMessage: "Chuyển sang chiến dịch để xem drop đang hoạt động.",
@@ -604,6 +614,7 @@
                 reloading: "重新加载...", currentKeywords: "当前关键词（点击删除）：",
                 noResults: "没有找到匹配的掉宝。",
                 dropsActive: "活跃掉宝", dropsExpired: "已关闭掉宝",
+                dropsUpcoming: "即将推出的掉宝",
                 dropsNone: "0个掉宝", editPrompt: "逗号分隔的关键词：",
                 waitMessage: "如果没有结果，请编辑关键词或等待页面加载。",
                 changeMessage: "切换到活动查看活跃掉宝。",
@@ -641,6 +652,7 @@
                 reloading: "إعادة التحميل...", currentKeywords: "الكلمات المفتاحية الحالية (انقر للحذف):",
                 noResults: "لم يتم العثور على نتائج.",
                 dropsActive: "دروبات نشطة", dropsExpired: "دروبات مغلقة",
+                dropsUpcoming: "دروبات قادمة",
                 dropsNone: "0 دروبات", editPrompt: "كلمات مفتاحية مفصولة بفواصل:",
                 waitMessage: "إذا لم تظهر نتائج، عدّل الكلمات المفتاحية أو انتظر تحميل الصفحة.",
                 changeMessage: "انتقل إلى الحملات لرؤية الدروبات النشطة.",
@@ -678,6 +690,7 @@
                 reloading: "पुनः लोड हो रहा है...", currentKeywords: "वर्तमान कीवर्ड (हटाने के लिए क्लिक करें):",
                 noResults: "कोई ड्रॉप नहीं मिला।",
                 dropsActive: "सक्रिय ड्रॉप", dropsExpired: "बंद ड्रॉप",
+                dropsUpcoming: "आगामी ड्रॉप",
                 dropsNone: "0 ड्रॉप", editPrompt: "अल्पविराम से अलग कीवर्ड:",
                 waitMessage: "यदि परिणाम नहीं दिखते, तो कीवर्ड संपादित करें या पेज लोड होने की प्रतीक्षा करें।",
                 changeMessage: "सक्रिय ड्रॉप देखने के लिए अभियानों पर जाएं।",
@@ -715,6 +728,7 @@
                 reloading: "Memuat ulang...", currentKeywords: "Kata kunci saat ini (klik untuk menghapus):",
                 noResults: "Tidak ada drop yang cocok.",
                 dropsActive: "Drop Terbuka", dropsExpired: "Drop Tertutup",
+                dropsUpcoming: "Drop Mendatang",
                 dropsNone: "0 drop", editPrompt: "Kata kunci dipisahkan koma:",
                 waitMessage: "Jika tidak ada hasil, edit kata kunci atau tunggu halaman dimuat.",
                 changeMessage: "Beralih ke kampanye untuk melihat drop aktif.",
@@ -800,11 +814,48 @@
             "Закрытые кампании",
             "Kapalı kampanyalar",
             "Các chiến dịch đã đóng",
-            "已关闭的广告活动"
+            "Campagnes fermées",
+            "Campagne chiuse",
+            "ปิดแคมเปญ",
+            "已关闭的广告活动",
+            "已结束的活动",
+            "已關閉的廣告活動"
+        ];
+
+        // Kick "upcoming" section header texts (campaigns scheduled but not started yet).
+        // These campaigns must live in their own tab and never trigger notifications
+        // until they actually become active. (i18n)
+        const UPCOMING_HEADER_TEXTS = [
+            "Upcoming campaigns",
+            "الحملات القادمة",
+            "Kommende Kampagnen",
+            "Bevorstehende Kampagnen",
+            "Próximas campañas",
+            "Tulevat kampanjat",
+            "Campagnes à venir",
+            "Prochaines campagnes",
+            "Campagne imminenti",
+            "आगामी अभियान",
+            "Kampanye Mendatang",
+            "今後のキャンペーン",
+            "近日開催のキャンペーン",
+            "예정된 캠페인",
+            "다가오는 캠페인",
+            "Nadchodzące kampanie",
+            "Próximas campanhas",
+            "Предстоящие кампании",
+            "Yaklaşan kampanyalar",
+            "Chiến dịch sắp tới",
+            "Các chiến dịch sắp tới",
+            "แคมเปญที่กำลังจะมีขึ้น",
+            "即将开始的活动",
+            "即將舉行的活動",
+            "即将推出的广告活动"
         ];
 
         const ACTIVE_STYLE = `border: 4px solid #3ad900 !important; box-shadow: 0 0 30px #53fc18 !important; border-radius: 16px !important; scroll-margin-top: 100px;`;
         const EXPIRED_STYLE = `border: 4px solid #971311 !important; box-shadow: 0 0 30px #ff8280 !important; border-radius: 16px !important; scroll-margin-top: 100px;`;
+        const UPCOMING_STYLE = `border: 4px solid #2d7fff !important; box-shadow: 0 0 30px #5aa3ff !important; border-radius: 16px !important; scroll-margin-top: 100px;`;
 
         const DEBUG_SNAPSHOTS = false;
 
@@ -817,6 +868,8 @@
             red: "#ff4d4d",
             gray: "#adadb8",
             orange: "#ff9900",
+            upcoming: "#2d7fff",
+            upcomingLight: "#5aa3ff",
             bg: "#0e0e10",
             text: "#efeff1",
             surface: "#1a1a1d",
@@ -1861,7 +1914,7 @@
             invCbs.style.marginBottom = "10px";
             body.appendChild(invCbs);
 
-            // Tabs: Active | Expired | Notifications
+            // Tabs: Active | Upcoming | Expired | Notifications
             const tabBar = document.createElement("div");
             Object.assign(tabBar.style, {
                 display: "flex", gap: "0", marginBottom: "10px",
@@ -1869,15 +1922,21 @@
             });
 
             const tabStyle = {
-                flex: "1", padding: "6px 0", cursor: "pointer", fontSize: "11px",
+                flex: "1", padding: "6px 1px", cursor: "pointer", fontSize: "10px",
+                lineHeight: "1.2",
                 fontWeight: "bold", border: "none", borderBottom: `2px solid transparent`,
-                backgroundColor: "transparent", color: colors.gray, textAlign: "inherit"
+                backgroundColor: "transparent", color: colors.gray, textAlign: "center"
             };
 
             const tabActive = document.createElement("button");
             tabActive.id = "kick-drops-tab-active";
             tabActive.textContent = t.dropsActive;
             Object.assign(tabActive.style, { ...tabStyle });
+
+            const tabUpcoming = document.createElement("button");
+            tabUpcoming.id = "kick-drops-tab-upcoming";
+            tabUpcoming.textContent = t.dropsUpcoming;
+            Object.assign(tabUpcoming.style, { ...tabStyle });
 
             const tabExpired = document.createElement("button");
             tabExpired.id = "kick-drops-tab-expired";
@@ -1890,6 +1949,7 @@
             Object.assign(tabNotifs.style, { ...tabStyle });
 
             tabBar.appendChild(tabActive);
+            tabBar.appendChild(tabUpcoming);
             tabBar.appendChild(tabExpired);
             tabBar.appendChild(tabNotifs);
             body.appendChild(tabBar);
@@ -1904,6 +1964,12 @@
             const activePane = document.createElement("div");
             activePane.id = "kick-drops-active-pane";
             tabContent.appendChild(activePane);
+
+            // Upcoming drops pane (hidden by default)
+            const upcomingPane = document.createElement("div");
+            upcomingPane.id = "kick-drops-upcoming-pane";
+            upcomingPane.style.display = "none";
+            tabContent.appendChild(upcomingPane);
 
             // Expired drops pane (hidden by default)
             const expiredPane = document.createElement("div");
@@ -1954,17 +2020,18 @@
             body.appendChild(tabContent);
 
             // Tab helper: activate one tab, deactivate others
-            function activateTab(activeBtn) {
-                [tabActive, tabExpired, tabNotifs].forEach(btn => {
+            function activateTab(activeBtn, accentBorder, accentText) {
+                [tabActive, tabUpcoming, tabExpired, tabNotifs].forEach(btn => {
                     btn.style.borderBottom = `2px solid transparent`;
                     btn.style.color = colors.gray;
                 });
-                activeBtn.style.borderBottom = `2px solid ${colors.primary}`;
-                activeBtn.style.color = colors.primaryLight;
-                [activePane, expiredPane, notifsPane].forEach(p => p.style.display = "none");
+                activeBtn.style.borderBottom = `2px solid ${accentBorder || colors.primary}`;
+                activeBtn.style.color = accentText || colors.primaryLight;
+                [activePane, upcomingPane, expiredPane, notifsPane].forEach(p => p.style.display = "none");
             }
 
             tabActive.onclick = () => { activateTab(tabActive); activePane.style.display = "block"; };
+            tabUpcoming.onclick = () => { activateTab(tabUpcoming, colors.upcoming, colors.upcomingLight); upcomingPane.style.display = "block"; };
             tabExpired.onclick = () => { activateTab(tabExpired); expiredPane.style.display = "block"; };
             tabNotifs.onclick = () => { activateTab(tabNotifs); notifsPane.style.display = "block"; };
 
@@ -2047,8 +2114,11 @@
             return null;
         }
 
-        function renderCampaignCard(campaign, isActive) {
-            const accentColor = isActive ? colors.primary : colors.red;
+        function renderCampaignCard(campaign, accent) {
+            // `accent` may be a color string; for backward-compat a boolean means active(true)/expired(false)
+            const accentColor = typeof accent === "string"
+                ? accent
+                : (accent ? colors.primary : colors.red);
             const card = document.createElement("div");
             Object.assign(card.style, {
                 backgroundColor: colors.bg, border: `1px solid ${accentColor}`,
@@ -2195,55 +2265,45 @@
         // RENDER RESULTS IN PANEL
         // =============================================
 
-        function renderResults(resultsContainer, activeItems, expiredItems) {
-            // Render into separate panes (Active tab / Expired tab)
+        function renderResults(resultsContainer, activeItems, upcomingItems, expiredItems) {
+            // Render into separate panes (Active tab / Upcoming tab / Expired tab)
             const activePane = document.getElementById("kick-drops-active-pane");
+            const upcomingPane = document.getElementById("kick-drops-upcoming-pane");
             const expiredPane = document.getElementById("kick-drops-expired-pane");
             const tabActive = document.getElementById("kick-drops-tab-active");
+            const tabUpcoming = document.getElementById("kick-drops-tab-upcoming");
             const tabExpired = document.getElementById("kick-drops-tab-expired");
 
             const totalActive = activeItems.length;
+            const totalUpcoming = upcomingItems.length;
             const totalExpired = expiredItems.length;
 
             // Update tab labels with counts
             if (tabActive) tabActive.textContent = `${t.dropsActive} (${totalActive})`;
+            if (tabUpcoming) tabUpcoming.textContent = `${t.dropsUpcoming} (${totalUpcoming})`;
             if (tabExpired) tabExpired.textContent = `${t.dropsExpired} (${totalExpired})`;
 
-            // Active pane
-            if (activePane) {
-                activePane.innerHTML = "";
-                if (totalActive === 0) {
+            const fillPane = (pane, items, accent) => {
+                if (!pane) return;
+                pane.innerHTML = "";
+                if (items.length === 0) {
                     const msg = document.createElement("div");
                     msg.textContent = "\u2713 " + t.noResults;
                     msg.style.color = colors.gray;
                     msg.style.fontSize = "12px";
                     msg.style.padding = "12px 0";
                     msg.style.textAlign = "center";
-                    activePane.appendChild(msg);
+                    pane.appendChild(msg);
                 } else {
-                    activeItems.forEach(c => {
-                        activePane.appendChild(renderCampaignCard(c, true));
+                    items.forEach(c => {
+                        pane.appendChild(renderCampaignCard(c, accent));
                     });
                 }
-            }
+            };
 
-            // Expired pane
-            if (expiredPane) {
-                expiredPane.innerHTML = "";
-                if (totalExpired === 0) {
-                    const msg = document.createElement("div");
-                    msg.textContent = "\u2713 " + t.noResults;
-                    msg.style.color = colors.gray;
-                    msg.style.fontSize = "12px";
-                    msg.style.padding = "12px 0";
-                    msg.style.textAlign = "center";
-                    expiredPane.appendChild(msg);
-                } else {
-                    expiredItems.forEach(c => {
-                        expiredPane.appendChild(renderCampaignCard(c, false));
-                    });
-                }
-            }
+            fillPane(activePane, activeItems, colors.primary);
+            fillPane(upcomingPane, upcomingItems, colors.upcoming);
+            fillPane(expiredPane, expiredItems, colors.red);
         }
 
         // =============================================
@@ -2251,7 +2311,7 @@
         // =============================================
 
         function removeBellFromCard(notifTitle, notifId) {
-            ["kick-drops-active-pane", "kick-drops-expired-pane"].forEach(paneId => {
+            ["kick-drops-active-pane", "kick-drops-upcoming-pane", "kick-drops-expired-pane"].forEach(paneId => {
                 const pane = document.getElementById(paneId);
                 if (pane) {
                     pane.querySelectorAll("[data-notif-title]").forEach(card => {
@@ -2267,7 +2327,7 @@
         }
 
         function removeAllBellsFromCards() {
-            ["kick-drops-active-pane", "kick-drops-expired-pane"].forEach(paneId => {
+            ["kick-drops-active-pane", "kick-drops-upcoming-pane", "kick-drops-expired-pane"].forEach(paneId => {
                 const pane = document.getElementById(paneId);
                 if (pane) {
                     pane.querySelectorAll(".drop-bell-icon").forEach(bell => bell.remove());
@@ -2413,17 +2473,21 @@
             // Auto-switch to notifications tab when there are pending notifications
             if (pending.length > 0) {
                 const tabActiveBtn = document.getElementById("kick-drops-tab-active");
+                const tabUpcomingBtn = document.getElementById("kick-drops-tab-upcoming");
                 const tabExpiredBtn = document.getElementById("kick-drops-tab-expired");
                 const activeP = document.getElementById("kick-drops-active-pane");
+                const upcomingP = document.getElementById("kick-drops-upcoming-pane");
                 const expiredP = document.getElementById("kick-drops-expired-pane");
                 if (tabActiveBtn && tabExpiredBtn && tabNotifs && activeP && expiredP && notifsPane) {
-                    [tabActiveBtn, tabExpiredBtn, tabNotifs].forEach(btn => {
+                    [tabActiveBtn, tabUpcomingBtn, tabExpiredBtn, tabNotifs].forEach(btn => {
+                        if (!btn) return;
                         btn.style.borderBottom = `2px solid transparent`;
                         btn.style.color = colors.gray;
                     });
                     tabNotifs.style.borderBottom = `2px solid ${colors.primary}`;
                     tabNotifs.style.color = colors.primaryLight;
                     activeP.style.display = "none";
+                    if (upcomingP) upcomingP.style.display = "none";
                     expiredP.style.display = "none";
                     notifsPane.style.display = "block";
                 }
@@ -2435,6 +2499,7 @@
         // =============================================
 
         let active = [];
+        let upcoming = [];
         let expired = [];
         let seenTitles = new Set();
         let idx = 0;
@@ -2465,6 +2530,7 @@
          */
         function highlightAndLinkDrops() {
             active = [];
+            upcoming = [];
             expired = [];
             seenTitles = new Set();
             reseted = false;
@@ -2472,11 +2538,12 @@
             // Clear previous drop-match IDs to allow re-scanning (needed when API data arrives after first DOM scan)
             document.querySelectorAll('[id^="drop-match-"]').forEach(el => el.removeAttribute('id'));
 
-            // STEP 1: Find all h1 section headers to determine open/closed boundaries
+            // STEP 1: Find all h1 section headers to determine open/upcoming/closed boundaries
             const allH1s = Array.from(document.querySelectorAll('h1'));
 
             let closedHeaderEl = null;
             let openHeaderEl = null;
+            let upcomingHeaderEl = null;
 
             allH1s.forEach(h1 => {
                 const text = h1.textContent.trim();
@@ -2486,14 +2553,18 @@
                 if (OPEN_HEADER_TEXTS.some(ot => text.toLowerCase() === ot.toLowerCase())) {
                     openHeaderEl = h1;
                 }
+                if (UPCOMING_HEADER_TEXTS.some(ut => text.toLowerCase() === ut.toLowerCase())) {
+                    upcomingHeaderEl = h1;
+                }
             });
 
             // STEP 2: Find all accordion containers (campaign groups)
             // Kick uses [data-orientation="vertical"] for accordion groups
             const accordionGroups = Array.from(document.querySelectorAll('[data-orientation="vertical"]'));
 
-            // Determine which groups are in closed section by position relative to closed header
+            // Determine section boundaries by Y position (DOM-walk is primary; these are fallbacks)
             const closedHeaderY = closedHeaderEl ? closedHeaderEl.getBoundingClientRect().top : Infinity;
+            const upcomingHeaderY = upcomingHeaderEl ? upcomingHeaderEl.getBoundingClientRect().top : Infinity;
 
             accordionGroups.forEach((group, groupIndex) => {
                 // Find accordion items (buttons with [data-state])
@@ -2504,7 +2575,7 @@
                     // Try alternative: look for campaign containers inside group
                     const campaignDivs = group.querySelectorAll('.bg-surface-base, [class*="bg-surface"]');
                     campaignDivs.forEach(div => {
-                        processCampaignNode(div, closedHeaderY);
+                        processCampaignNode(div, closedHeaderY, upcomingHeaderY);
                     });
                     return;
                 }
@@ -2514,7 +2585,7 @@
                     const accordionItem = btn.closest('[data-state]') || btn.parentElement;
                     if (!accordionItem) return;
 
-                    processCampaignNode(accordionItem, closedHeaderY);
+                    processCampaignNode(accordionItem, closedHeaderY, upcomingHeaderY);
                 });
             });
 
@@ -2523,14 +2594,14 @@
                 // Fallback: scan all elements that look like campaign containers
                 const fallbackNodes = document.querySelectorAll('[data-state], .bg-surface-base');
                 fallbackNodes.forEach(node => {
-                    processCampaignNode(node, closedHeaderY);
+                    processCampaignNode(node, closedHeaderY, upcomingHeaderY);
                 });
             }
 
             // Render results in the floating panel
             const resultsContainer = document.getElementById("kick-drops-results");
             if (resultsContainer) {
-                renderResults(resultsContainer, active, expired);
+                renderResults(resultsContainer, active, upcoming, expired);
             }
 
             // Show notification popup
@@ -2553,7 +2624,7 @@
                     }
                     // Also try to find matching card in panel by data-notif-id or data-notif-title
                     if (!found) {
-                        const panes = ["kick-drops-active-pane", "kick-drops-expired-pane"];
+                        const panes = ["kick-drops-active-pane", "kick-drops-upcoming-pane", "kick-drops-expired-pane"];
                         for (const paneId of panes) {
                             const pane = document.getElementById(paneId);
                             if (pane) {
@@ -2584,7 +2655,7 @@
          * Extract campaign data from a single accordion item / campaign node.
          * Adapted for Kick.com's HTML structure.
          */
-        function processCampaignNode(node, closedHeaderY) {
+        function processCampaignNode(node, closedHeaderY, upcomingHeaderY) {
             if (!(node instanceof HTMLElement)) return;
             if (node.id && node.id.startsWith('drop-match-')) return;
 
@@ -2639,8 +2710,18 @@
             // Display title includes studio when present
             const displayTitle = studioText ? titleText + " - " + studioText : titleText;
 
-            // Determine if expired by walking up the DOM to find the nearest h1 section header
-            let isExpired = false;
+            // Determine the campaign's section ('active' | 'upcoming' | 'expired') by walking
+            // up the DOM to find the nearest preceding h1 section header. Upcoming campaigns
+            // (scheduled but not started) live under their own header and must be treated
+            // separately: their own tab and no notifications until they go live.
+            let status = 'active';
+            const classifyByHeader = (text) => {
+                const h = text.trim().toLowerCase();
+                if (CLOSED_HEADER_TEXTS.some(ct => h === ct.toLowerCase())) return 'expired';
+                if (UPCOMING_HEADER_TEXTS.some(ut => h === ut.toLowerCase())) return 'upcoming';
+                if (OPEN_HEADER_TEXTS.some(ot => h === ot.toLowerCase())) return 'active';
+                return null;
+            };
             let walker = node.parentElement;
             while (walker) {
                 // Check previous siblings for h1 headers
@@ -2648,10 +2729,8 @@
                 while (sibling) {
                     const h1 = sibling.tagName === 'H1' ? sibling : sibling.querySelector('h1');
                     if (h1) {
-                        const h1Text = h1.textContent.trim().toLowerCase();
-                        if (CLOSED_HEADER_TEXTS.some(ct => h1Text === ct.toLowerCase())) {
-                            isExpired = true;
-                        }
+                        const matched = classifyByHeader(h1.textContent);
+                        if (matched) status = matched;
                         // Found the nearest h1, stop walking
                         walker = null;
                         break;
@@ -2659,13 +2738,9 @@
                     // Also check if the sibling itself contains the section header div
                     const sectionH1s = sibling.querySelectorAll ? sibling.querySelectorAll('h1') : [];
                     for (const sh of sectionH1s) {
-                        const shText = sh.textContent.trim().toLowerCase();
-                        if (CLOSED_HEADER_TEXTS.some(ct => shText === ct.toLowerCase())) {
-                            isExpired = true;
-                            walker = null;
-                            break;
-                        }
-                        if (OPEN_HEADER_TEXTS.some(ot => shText === ot.toLowerCase())) {
+                        const matched = classifyByHeader(sh.textContent);
+                        if (matched) {
+                            status = matched;
                             walker = null;
                             break;
                         }
@@ -2675,13 +2750,19 @@
                 }
                 if (walker) walker = walker.parentElement;
             }
-            // Fallback: Y-position approach if DOM walk didn't find any h1
-            if (!isExpired && closedHeaderY !== Infinity) {
+            // Fallback: Y-position approach if DOM walk didn't find a classifying h1.
+            // Section order on the page is: open (top) -> upcoming -> closed (bottom).
+            if (status === 'active') {
                 const nodeY = node.getBoundingClientRect().top;
-                if (nodeY >= closedHeaderY) {
-                    isExpired = true;
+                if (closedHeaderY !== Infinity && nodeY >= closedHeaderY) {
+                    status = 'expired';
+                } else if (upcomingHeaderY !== Infinity && nodeY >= upcomingHeaderY) {
+                    status = 'upcoming';
                 }
             }
+
+            const isExpired = status === 'expired';
+            const isUpcoming = status === 'upcoming';
 
             if (isExpired && !reseted) {
                 seenTitles = new Set();
@@ -2689,18 +2770,19 @@
             }
 
             // Use displayTitle as a dedup key (since we don't have indices like Twitch)
-            const dedupKey = displayTitle + (isExpired ? '_expired' : '_active');
+            const dedupKey = displayTitle + '_' + status;
             if (seenTitles.has(dedupKey)) return;
             seenTitles.add(dedupKey);
 
-            const id = `drop-match-${idx++}-${isExpired ? 'expired' : 'active'}`;
+            const id = `drop-match-${idx++}-${status}`;
 
             node.id = id;
             // Apply highlight styles to the individual campaign node (not the parent container)
             // On Kick, each campaign is a div[data-state] inside a shared div[data-orientation="vertical"]
             // If node has .bg-surface-base inside, style that; otherwise style the node itself
             const innerCard = node.querySelector('.bg-surface-base') || node;
-            innerCard.setAttribute('style', (innerCard.getAttribute('style') || '') + ';' + (isExpired ? EXPIRED_STYLE : ACTIVE_STYLE));
+            const nodeStyle = isExpired ? EXPIRED_STYLE : (isUpcoming ? UPCOMING_STYLE : ACTIVE_STYLE);
+            innerCard.setAttribute('style', (innerCard.getAttribute('style') || '') + ';' + nodeStyle);
 
             // Extract reward items from sub-campaigns (only for active drops)
             const rewards = [];
@@ -2723,10 +2805,18 @@
             // Matched keywords
             const matchedKeywords = keywords.filter(k => searchText.includes(k));
 
-            // Update/create notification (using API data instead of HTML snapshots)
+            // Update/create notification (using API data instead of HTML snapshots).
+            // Only ACTIVE campaigns may notify. Upcoming campaigns must never raise an alert
+            // until they actually go live; if one carries a stale notification (e.g. it was
+            // previously misclassified as open, or it transitioned active -> upcoming), drop it.
             let changedFlag = false;
             const computedKey = displayTitle + '|' + id;
-            if (!isExpired) {
+            if (isUpcoming) {
+                const notifs = getNotifications();
+                const filtered = notifs.filter(n => n.title !== displayTitle && !(n.key && n.key.split('|')[0] === displayTitle));
+                if (filtered.length !== notifs.length) saveNotifications(filtered);
+            }
+            if (status === 'active') {
                 const notifs = getNotifications();
                 let existingNotif = notifs.find((n) => n.key === computedKey) || notifs.find((n) => n.title === displayTitle);
                 if (_apiDataReady) {
@@ -2782,11 +2872,11 @@
 
             const item = {
                 title: displayTitle, studio: studioText, id, changed: changedFlag,
-                key: computedKey, status: isExpired ? 'expired' : 'active',
+                key: computedKey, status,
                 idx, imgSrc, dateRange, matchedKeywords, rewards,
                 element: node,
             };
-            (isExpired ? expired : active).push(item);
+            (isExpired ? expired : (isUpcoming ? upcoming : active)).push(item);
         }
 
         // =============================================
