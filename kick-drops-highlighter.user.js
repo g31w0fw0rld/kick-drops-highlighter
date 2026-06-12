@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.1.3
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.1.2";
+    const SCRIPT_VERSION = "1.1.3";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -2032,7 +2032,7 @@
 
             tabActive.onclick = () => { activateTab(tabActive); activePane.style.display = "block"; };
             tabUpcoming.onclick = () => { activateTab(tabUpcoming, colors.upcoming, colors.upcomingLight); upcomingPane.style.display = "block"; };
-            tabExpired.onclick = () => { activateTab(tabExpired); expiredPane.style.display = "block"; };
+            tabExpired.onclick = () => { activateTab(tabExpired, colors.red, colors.red); expiredPane.style.display = "block"; };
             tabNotifs.onclick = () => { activateTab(tabNotifs); notifsPane.style.display = "block"; };
 
             // Check if there are pending notifications to show that tab by default
@@ -2974,6 +2974,11 @@
                 }
             }
             if (allClaimed.length === 0) return;
+
+            // El API no expone fecha de reclamo, pero devuelve las rewards en un
+            // orden estable. Solo invertimos ese orden para mostrarlas del más
+            // reciente al más antiguo (no se ordena por fecha porque no hay).
+            allClaimed.reverse();
 
             // Find insertion point: after the "Reclamado" section
             const allH1s = Array.from(document.querySelectorAll('h1'));
