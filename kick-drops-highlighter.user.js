@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.3
+// @version      1.1.4
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.1.3";
+    const SCRIPT_VERSION = "1.1.4";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -948,6 +948,10 @@
 
                 const kws = getStoredKeywords();
 
+                // Rebuild from scratch each fetch so a re-invocation never accumulates
+                // duplicate drops into the per-game entries below.
+                for (const k of Object.keys(_apiDropNames)) delete _apiDropNames[k];
+
                 for (const campaign of allCampaigns) {
                     // Only active campaigns
                     if (campaign.status !== 'active') continue;
@@ -971,11 +975,17 @@
                         });
                     }
                     if (drops.length > 0) {
-                        // Key by category name (game name) for matching
+                        // Key by category name (game name) so every sub-campaign that shares
+                        // the same game lands in a single entry. A game like Rust ships many
+                        // sub-campaigns (Wallpaper Pack, Team X + Y, ...) that the DOM groups
+                        // under one "Rust - Facepunch Studios" accordion, so ACCUMULATE their
+                        // drops here instead of overwriting — otherwise only the last
+                        // sub-campaign's badge would survive.
                         const key = categoryName || campaignName;
                         // Full display title matching DOM format: "Game - Studio"
                         const displayTitle = orgName ? `${categoryName || campaignName} - ${orgName}` : (categoryName || campaignName);
-                        _apiDropNames[key] = { drops, displayTitle };
+                        if (!_apiDropNames[key]) _apiDropNames[key] = { drops: [], displayTitle };
+                        _apiDropNames[key].drops.push(...drops);
                     }
                 }
             } catch (e) { console.warn('[Kick Drops API] Fetch error:', e); }
@@ -1081,12 +1091,16 @@
             Object.assign(container.style, {
                 display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "4px",
             });
-            // Group by minutes
+            // Group by minutes (same UX as the Twitch script): one chip per watch-time
+            // bucket, with all drop names that share that time joined by ", ". A game card
+            // aggregates every sub-campaign's drops, so names are deduped within each bucket
+            // to avoid repeats when two sub-campaigns ship a same-named reward at the same time.
             const grouped = {};
             drops.forEach(d => {
                 const key = d.minutes || 0;
                 if (!grouped[key]) grouped[key] = [];
-                grouped[key].push(d.name);
+                const name = d.name || '';
+                if (name && !grouped[key].includes(name)) grouped[key].push(name);
             });
             Object.entries(grouped).forEach(([min, names]) => {
                 const minutes = parseInt(min);
@@ -2670,6 +2684,17 @@
                 node.querySelector('[class*="font-bold"]');
             if (gameNameEl) {
                 titleText = gameNameEl.textContent.trim();
+            }
+
+            // Kick nests sub-campaigns inside each top-level game accordion. The game
+            // (category) name lives in a <span class="text-base font-bold">, while each
+            // sub-campaign's own name lives in a <div class="break-words text-base font-bold">.
+            // We render ONE card per game and surface its sub-campaigns as API badges, so
+            // skip any node whose primary title is a sub-campaign div — otherwise it gets
+            // duplicated as its own card (e.g. "Kick + Rust Wallpaper Pack" appearing next
+            // to "Rust - Facepunch Studios", which both match the "rust" keyword).
+            if (gameNameEl && gameNameEl.tagName === 'DIV' && gameNameEl.classList.contains('break-words')) {
+                return;
             }
 
             // Studio: .text-secondary-onSecondaryVariant or .text-start.text-sm
