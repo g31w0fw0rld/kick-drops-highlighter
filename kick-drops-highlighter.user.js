@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.4
+// @version      1.1.5
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.1.4";
+    const SCRIPT_VERSION = "1.1.5";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -3032,7 +3032,7 @@
             const header = document.createElement('h1');
             header.className = 'font-semibold text-white lg:text-xl text-base';
             header.textContent = t.claimedInventoryTitle || 'Claimed';
-            section.appendChild(header);
+            //section.appendChild(header);
 
             // Rewards grid (Twitch-style cards)
             const grid = document.createElement('div');
@@ -3693,6 +3693,25 @@
             _startDropsPolling(false);
         }
 
+        // Colapsa todos los acordeones de campaña que esten abiertos para que la
+        // lista de /all-campaigns arranque compacta. Los acordeones son de Radix UI:
+        // un click en el <button data-radix-collection-item> togglea data-state entre
+        // "open"/"closed", asi que solo clickeamos los que esten en "open" (clickear
+        // uno cerrado lo abriria). Se ejecuta UNA sola vez tras el primer escaneo;
+        // a proposito no re-colapsamos despues para no pelear con el usuario cuando
+        // expande una categoria manualmente. Los acordeones que cargan de forma
+        // diferida (lazy) ya nacen "closed" por default, asi que no hace falta vigilarlos.
+        function collapseAllCampaignAccordions() {
+            // querySelectorAll deduplica aunque un boton matchee ambos selectores.
+            const openButtons = document.querySelectorAll(
+                'button[data-radix-collection-item][data-state="open"], ' +
+                '[data-orientation="vertical"] button[data-state="open"][aria-expanded="true"]'
+            );
+            openButtons.forEach(btn => {
+                try { btn.click(); } catch (e) { /* ignore */ }
+            });
+        }
+
         function _startDropsPolling(returnToInventory) {
             if (!returnToInventory) {
                 _showLoadingOverlay(t.loadingDrops);
@@ -3724,9 +3743,18 @@
 
                 if (found >= 1) {
                     clearInterval(waitForDrops);
+                    // Capturamos el flag ANTES de highlightAndLinkDrops() porque este
+                    // consume divIdClickAfterClick (navegacion dirigida a un drop). Si
+                    // venimos de "ver este drop", no colapsamos para no romper el scroll.
+                    const hadPendingClick = !!divIdClickAfterClick;
                     if (!returnToInventory) _hideLoadingOverlay();
                     highlightAndLinkDrops();
                     _updateAllCardsWithDropNames();
+                    if (!returnToInventory && !hadPendingClick) {
+                        // Pequeno delay para que se asienten las mutaciones de DOM del
+                        // escaneo (ids/badges) antes de togglear los acordeones.
+                        setTimeout(collapseAllCampaignAccordions, 150);
+                    }
                     if (returnToInventory) {
                         _navigateBackToInventory();
                     }
