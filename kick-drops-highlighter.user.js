@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.5
+// @version      1.2.0
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.1.5";
+    const SCRIPT_VERSION = "1.2.0";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -1706,7 +1706,11 @@
                 setInventoryExpiredFlag(checked);
                 cleanExpiredInventoryFlag = checked;
                 if (location.pathname.includes('/inventory')) {
-                    if (checked) { cleanInventory("expired"); } else { setCollapseFlag(false); location.reload(); }
+                    if (checked) {
+                        // Al activar: primero revisa/reclama drops, luego el cofre.
+                        _dropsReviewInProgress = true;
+                        cleanInventory("expired", _finishDropsReview);
+                    } else { setCollapseFlag(false); location.reload(); }
                 }
             });
 
@@ -3474,11 +3478,17 @@
          * - Ready to claim: has progressbar[data-state="complete"] + button with "Pedir"/"Claim"
          * - Already claimed: NO progressbar, span text is "Pedido"/"Claimed"
          */
-        function cleanInventory(type = "expired") {
+        function cleanInventory(type = "expired", onDone = null) {
             let attempts = 0;
             const maxAttempts = 15;
             const interval = 600;
             const deleted = getInventoryDeletedKeys();
+            let doneCalled = false;
+            const finish = () => {
+                if (doneCalled) return;
+                doneCalled = true;
+                if (typeof onDone === 'function') { try { onDone(); } catch (e) { /* ignore */ } }
+            };
 
             const checker = setInterval(() => {
                 attempts++;
@@ -3500,6 +3510,7 @@
 
                 if (campaignContainers.length === 0 && attempts >= maxAttempts) {
                     clearInterval(checker);
+                    finish();
                     return;
                 }
 
@@ -3629,8 +3640,132 @@
                     clearInterval(checker);
                     // Fetch and render claimed inventory section after cleanup finishes
                     _fetchClaimedInventory();
+                    finish();
                 }
             }, interval);
+        }
+
+        // =============================================
+        // RECOMPENSA DIARIA (cofre / daily reward)
+        // =============================================
+        // Kick agrega un "cofre" de recompensa diaria en la barra superior. El boton
+        // del navbar tiene aria-haspopup="dialog" y, cuando la recompensa esta
+        // DISPONIBLE, muestra un <video src=".../rewards/reward-available-CTA.webm">
+        // en vez del icono estatico del cofre. Al pulsarlo abre un modal Radix con un
+        // boton primario (.bg-primary-base) "Reclamar" que puede estar:
+        //   - habilitado                     -> reclamar (click)
+        //   - deshabilitado + cuenta regresiva ("Mira X minutos mas") -> aun no
+        //   - deshabilitado + "Reclamado"    -> ya reclamado hoy
+        // Solo abrimos el modal cuando el CTA "reward-available" esta presente, asi
+        // evitamos abrir/cerrar el dialogo mientras el usuario navega. Todo el matching
+        // es independiente del idioma (paths de SVG + clases utilitarias).
+        // Gated por cleanExpiredInventoryFlag (la "reclamacion automatica").
+        //
+        // ORDEN respecto a la revision de drops: el cofre se revisa SIEMPRE despues de
+        // que termina la revision de drops, nunca en medio. Es decir:
+        //   - En /inventory: primero se revisan campañas (para escanear) y se vuelve al
+        //     inventario a auto-reclamar los drops; recien cuando eso termina, el cofre.
+        //   - En /all-campaigns: se espera a que termine el escaneo de la campaña.
+        // Esto evita que el modal del cofre robe foco o se solape con la navegacion
+        // entre pestañas y el auto-claim del inventario. El flag _dropsReviewInProgress
+        // marca ese periodo y _checkDailyReward() se abstiene mientras dure.
+        let _dailyRewardBusy = false;
+        let _dropsReviewInProgress = false;
+
+        // Se llama en cada punto de finalizacion real de la revision de drops.
+        function _finishDropsReview() {
+            _dropsReviewInProgress = false;
+            setTimeout(_checkDailyReward, 1500);
+        }
+
+        function _findDailyRewardButton() {
+            const buttons = document.querySelectorAll('button[aria-haspopup="dialog"]');
+            for (const b of buttons) {
+                if (b.querySelector('video[src*="static.kick.com/rewards"]') ||
+                    b.querySelector('svg path[d^="M6 7.33301"]')) {
+                    return b;
+                }
+            }
+            return null;
+        }
+
+        function _getOpenRewardDialog() {
+            // El dialogo Radix del cofre reusa el mismo icono (path M6 7.33301) en su
+            // header y contiene el boton primario de reclamo.
+            const dialogs = document.querySelectorAll('div[role="dialog"][data-state="open"]');
+            for (const d of dialogs) {
+                if (d.querySelector('svg path[d^="M6 7.33301"]') ||
+                    d.querySelector('button.bg-primary-base')) {
+                    return d;
+                }
+            }
+            return null;
+        }
+
+        function _closeRewardDialog(dialog) {
+            if (!dialog) return;
+            let closeBtn = null;
+            const xPath = dialog.querySelector('svg path[d^="M28 6.99204"]');
+            if (xPath) closeBtn = xPath.closest('button');
+            if (!closeBtn) {
+                dialog.querySelectorAll('button').forEach((b) => {
+                    if (!closeBtn && /close|cerrar/i.test(b.querySelector('span.sr-only')?.textContent || '')) {
+                        closeBtn = b;
+                    }
+                });
+            }
+            if (closeBtn) { try { closeBtn.click(); return; } catch (e) { /* ignore */ } }
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        }
+
+        function _checkDailyReward() {
+            if (!cleanExpiredInventoryFlag) return; // atado a "reclamacion automatica"
+            if (_dailyRewardBusy) return;
+            // Esperar a que termine la revision de drops (escaneo/navegacion/auto-claim).
+            if (_dropsReviewInProgress || _loadingOverlay) return;
+
+            const chestBtn = _findDailyRewardButton();
+            if (!chestBtn) return;
+
+            // Solo actuar si la recompensa esta DISPONIBLE (CTA video presente),
+            // asi no abrimos el modal en cada ciclo mientras esta en cuenta regresiva.
+            if (!chestBtn.querySelector('video[src*="reward-available"]')) return;
+
+            _dailyRewardBusy = true;
+            try { chestBtn.click(); } catch (e) { _dailyRewardBusy = false; return; }
+
+            let attempts = 0;
+            const maxAttempts = 12; // ~3s
+            const poll = setInterval(() => {
+                attempts++;
+                const dialog = _getOpenRewardDialog();
+                if (dialog) {
+                    clearInterval(poll);
+                    const claimBtn = dialog.querySelector('button.bg-primary-base');
+                    const isEnabled = claimBtn &&
+                        !claimBtn.disabled &&
+                        claimBtn.getAttribute('aria-disabled') !== 'true';
+                    if (isEnabled) {
+                        try { claimBtn.click(); } catch (e) { /* ignore */ }
+                        console.log('Kick Drops Highlighter: recompensa diaria reclamada.');
+                        // Cerrar tras dar tiempo a que se registre el reclamo.
+                        setTimeout(() => {
+                            _closeRewardDialog(_getOpenRewardDialog() || dialog);
+                            _dailyRewardBusy = false;
+                        }, 1800);
+                    } else {
+                        // Deshabilitado (cuenta regresiva o ya reclamado): cerrar y reintentar luego.
+                        _closeRewardDialog(dialog);
+                        _dailyRewardBusy = false;
+                    }
+                    return;
+                }
+                if (attempts >= maxAttempts) {
+                    clearInterval(poll);
+                    _closeRewardDialog(_getOpenRewardDialog());
+                    _dailyRewardBusy = false;
+                }
+            }, 250);
         }
 
         // =============================================
@@ -3676,6 +3811,9 @@
             // Build the floating panel
             const resultsContainer = buildPanel();
 
+            // Marca el inicio de la revision de drops; el cofre esperara a que termine.
+            _dropsReviewInProgress = true;
+
             if (isInventory) {
                 const campaignsTab = document.querySelector('a[href="/drops/all-campaigns"]');
                 if (campaignsTab) {
@@ -3684,7 +3822,7 @@
                     campaignsTab.click();
                     setTimeout(() => { _startDropsPolling(true); }, 2000);
                 } else {
-                    cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '');
+                    cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '', _finishDropsReview);
                     setTimeout(() => _fetchClaimedInventory(), 3000);
                 }
                 return;
@@ -3757,6 +3895,9 @@
                     }
                     if (returnToInventory) {
                         _navigateBackToInventory();
+                    } else {
+                        // Escaneo de campaña terminado -> ahora si, revisar el cofre.
+                        _finishDropsReview();
                     }
                 } else {
                     attempts++;
@@ -3798,6 +3939,9 @@
                         }
                         if (returnToInventory) {
                             _navigateBackToInventory();
+                        } else {
+                            // Sin resultados en campaña, pero la revision termino igual.
+                            _finishDropsReview();
                         }
                     }
                 }
@@ -3811,10 +3955,14 @@
                 skipNextUrlChange = true;
                 inventoryTab.click();
                 setTimeout(() => {
-                    cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '');
+                    // El cofre se revisa recien cuando termina este auto-claim (_finishDropsReview).
+                    cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '', _finishDropsReview);
                     // Fetch and render claimed inventory after returning
                     setTimeout(() => _fetchClaimedInventory(), 3000);
                 }, 2000);
+            } else {
+                // No se pudo volver al inventario; cerrar la revision igual.
+                _finishDropsReview();
             }
         }
 
@@ -3853,13 +4001,22 @@
                 if (newPath.startsWith("/drops/all-campaigns")) {
                     waitForDropsFunction();
                 } else {
-                    cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '');
+                    // Revision de drops del inventario; el cofre espera a que termine.
+                    _dropsReviewInProgress = true;
+                    cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '', _finishDropsReview);
                 }
             }
         });
 
         // Start
         waitForDropsFunction();
+
+        // Recompensa diaria (cofre): el chequeo al cargar NO se agenda con un timeout
+        // ciego, sino que lo dispara _finishDropsReview() cuando termina la revision de
+        // drops (ver waitForDropsFunction / _startDropsPolling / _navigateBackToInventory).
+        // El interval periodico cubre la recompensa que se habilita mientras la pagina
+        // sigue abierta; _checkDailyReward() igual se abstiene si hay una revision en curso.
+        setInterval(_checkDailyReward, 3 * 60 * 1000);
 
         // Auto-refresh every 15 minutes
         setInterval(() => {
