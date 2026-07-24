@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
+// @version      1.2.1
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.0";
+    const SCRIPT_VERSION = "1.2.1";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -1726,6 +1726,7 @@
                 { label: t.scriptInfoDescription, value: t.scriptInfoDescriptionText },
                 { label: t.scriptInfoAuthor, value: "g31w0fw0rld" },
                 { label: t.scriptInfoGitHub, value: "github.com/g31w0fw0rld/kick-drops-highlighter", isLink: true },
+                { label: "☕ Ko-fi:", value: "ko-fi.com/g31w0fw0rld", isLink: true },
             ];
             const titleEl = document.createElement('div');
             titleEl.textContent = t.scriptInfoTitle;
