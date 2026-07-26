@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.2
+// @version      1.2.3
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.2";
+    const SCRIPT_VERSION = "1.2.3";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -924,16 +924,65 @@
             GM_setValue(STORAGE_KEY, JSON.stringify(DEFAULT_KEYWORDS.slice()));
         }
 
+        // ---------------------------------------------
+        // Poda del almacenamiento local
+        // ---------------------------------------------
+        // Ni el historial de notificaciones ni la lista de inventario descartado
+        // tenian tope. Una campaña que expiraba dejaba su entrada para siempre
+        // (el chequeo de cambios solo hace "continue" cuando ya no quedan drops),
+        // y las claves descartadas solo se borraban con los botones de reinicio.
+        // Lo unico que vaciaba las notificaciones era el reset por cambio de
+        // @version: de golpe y solo si habia release. Ahora se acotan al leer y
+        // al escribir, asi que el limite se aplica siempre.
+
+        // Una campaña de drops dura semanas: a los 60 dias sin actualizarse la
+        // entrada ya no describe nada vivo, este vista o no.
+        const NOTIF_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+        const NOTIF_MAX_ENTRIES = 200;
+        const DELETED_KEYS_MAX = 500;
+
+        function _notifTs(n) {
+            return Number(n && (n.updatedAt || n.createdAt)) || 0;
+        }
+
+        function pruneNotifications(notifs) {
+            if (!Array.isArray(notifs)) return [];
+            const now = Date.now();
+            let out = notifs.filter(n => {
+                const ts = _notifTs(n);
+                // Sin marca de tiempo utilizable no se puede juzgar la edad: se
+                // conserva, y del volumen ya se encarga el tope por cantidad.
+                return ts === 0 || now - ts < NOTIF_MAX_AGE_MS;
+            });
+            if (out.length > NOTIF_MAX_ENTRIES) {
+                // Conservar las mas recientes SIN reordenar la lista: la pestaña de
+                // notificaciones la pinta en el orden en que esta guardada.
+                const keep = new Set(
+                    out.slice().sort((a, b) => _notifTs(b) - _notifTs(a)).slice(0, NOTIF_MAX_ENTRIES)
+                );
+                out = out.filter(n => keep.has(n));
+            }
+            return out;
+        }
+
+        // Las claves se añaden con push, asi que las mas recientes quedan al final
+        // y el recorte va por la cabeza. Se deduplica ademas de acotar.
+        function pruneDeletedKeys(keys) {
+            if (!Array.isArray(keys)) return [];
+            const unique = [...new Set(keys)];
+            return unique.length > DELETED_KEYS_MAX ? unique.slice(-DELETED_KEYS_MAX) : unique;
+        }
+
         function getInventoryDeletedKeys() {
             const stored = GM_getValue(INVENTORY_DELETED_KEYS, null);
             if (stored) {
-                try { return JSON.parse(stored); } catch (e) { return []; }
+                try { return pruneDeletedKeys(JSON.parse(stored)); } catch (e) { return []; }
             }
             return [];
         }
 
         function setInventoryDeletedKeys(keys) {
-            GM_setValue(INVENTORY_DELETED_KEYS, JSON.stringify(keys));
+            GM_setValue(INVENTORY_DELETED_KEYS, JSON.stringify(pruneDeletedKeys(keys)));
         }
 
         function resetInventoryDeletedKeys() {
@@ -943,13 +992,13 @@
         function getNotifications() {
             const stored = GM_getValue(STORAGE_NOTIFS, null);
             if (stored) {
-                try { return JSON.parse(stored); } catch (e) { return []; }
+                try { return pruneNotifications(JSON.parse(stored)); } catch (e) { return []; }
             }
             return [];
         }
 
         function saveNotifications(notifs) {
-            GM_setValue(STORAGE_NOTIFS, JSON.stringify(notifs));
+            GM_setValue(STORAGE_NOTIFS, JSON.stringify(pruneNotifications(notifs)));
         }
 
         function resetNotifications() {
