@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
+// @version      1.2.2
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.1";
+    const SCRIPT_VERSION = "1.2.2";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -34,16 +34,40 @@
     let _onProgressDataReady = null;
     const KICK_DROPS_PROGRESS_URL = 'https://web.kick.com/api/v1/drops/progress';
 
+    // Solo tratamos como "de Kick" las URLs que resuelven a kick.com. Las
+    // relativas se resuelven contra la pagina, que ya es kick.com. Sin esta
+    // comprobacion capturariamos el Bearer de cualquier peticion que la pagina
+    // hiciera a un tercero (y lo reenviariamos a la API de Kick), y bastaria un
+    // path ajeno que contuviera /api/v1/drops/progress para colarnos datos.
+    // Ojo con la cadena vacia: new URL('', location.href) resuelve a la propia
+    // pagina (kick.com) y daria un falso positivo.
+    function _isKickUrl(url) {
+        if (!url) return false;
+        try {
+            const h = new URL(url, location.href).hostname;
+            return h === 'kick.com' || h.endsWith('.kick.com');
+        } catch (e) { return false; }
+    }
+
+    // fetch acepta string, URL o Request. Con un URL, .url es undefined, asi que
+    // hay que caer a String(input) para no perder el href.
+    function _urlOf(input) {
+        if (typeof input === 'string') return input;
+        if (input == null) return '';
+        return input.url || String(input);
+    }
+
     // Intercept the PAGE's fetch (unsafeWindow) to capture Kick's own API calls
     // Running at document-start ensures we're in place before Kick's JS loads
     const _pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
     const _originalFetch = _pageWindow.fetch;
     _pageWindow.fetch = async function (...args) {
         const [input, init] = args;
-        const url = typeof input === 'string' ? input : input?.url || '';
+        const url = _urlOf(input);
+        const isKick = _isKickUrl(url);
 
-        // Capture Authorization token from any Kick API request
-        if (init?.headers) {
+        // Capture Authorization token from Kick's own API requests only
+        if (isKick && init?.headers) {
             const headers = init.headers;
             const authValue = headers instanceof Headers
                 ? headers.get('Authorization')
@@ -57,7 +81,7 @@
 
         // Intercept drops progress response
         try {
-            if (url.includes('/api/v1/drops/progress')) {
+            if (isKick && new URL(url, location.href).pathname === '/api/v1/drops/progress') {
                 const clone = response.clone();
                 clone.json().then(data => {
                     if (data?.data && Array.isArray(data.data)) {
@@ -136,6 +160,8 @@
                 scriptInfoDescriptionText: "Resalta automaticamente drops activos y expirados segun keywords personalizables. Notificaciones en tiempo real de cambios, gestion de inventario avanzada y soporte multiidioma.",
                 scriptInfoAuthor: "Autor:",
                 scriptInfoGitHub: "GitHub:",
+                scriptInfoPrivacy: "Privacidad:",
+                scriptInfoPrivacyText: "Tus keywords y ajustes se guardan solo en tu navegador. Las consultas de drops e inventario van unicamente a la API de Kick (web.kick.com) reusando tu propia sesion; el token se mantiene en memoria, nunca se guarda en disco. No hay terceros involucrados y no se envia nada al autor del script.",
                 loadingDropsFromInventory: "Leyendo drops desde campañas, por favor espere...",
                 loadingDrops: "Buscando drops...",
                 newCampaign: "Nueva campaña",
@@ -204,6 +230,8 @@
                 scriptInfoDescriptionText: "Automatically highlights active and expired drops based on customizable keywords. Real-time change notifications, advanced inventory management, and multi-language support.",
                 scriptInfoAuthor: "Author:",
                 scriptInfoGitHub: "GitHub:",
+                scriptInfoPrivacy: "Privacy:",
+                scriptInfoPrivacyText: "Your keywords and settings stay in your browser only. Drop and inventory queries go exclusively to Kick's own API (web.kick.com), reusing your existing session; the token is kept in memory and never written to disk. No third parties are involved and nothing is sent to the script author.",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
                 newCampaign: "New campaign",
@@ -1551,11 +1579,14 @@
             });
         }
 
-        function showAlertModal(message, html = false) {
+        // Siempre textContent: el flag html que tenia esta funcion no lo usaba
+        // nadie y solo dejaba un sink de inyeccion esperando al primer llamador
+        // que le pasara texto venido de la pagina.
+        function showAlertModal(message) {
             return new Promise((resolve) => {
                 const { overlay, box } = createModalContainer();
                 const msg = document.createElement('div');
-                if (html) { msg.innerHTML = message; } else { msg.textContent = message; }
+                msg.textContent = message;
                 msg.style.marginBottom = '12px';
                 box.appendChild(msg);
 
@@ -1726,6 +1757,8 @@
                 { label: t.scriptInfoDescription, value: t.scriptInfoDescriptionText },
                 { label: t.scriptInfoAuthor, value: "g31w0fw0rld" },
                 { label: t.scriptInfoGitHub, value: "github.com/g31w0fw0rld/kick-drops-highlighter", isLink: true },
+                // Definida solo en es/en; el resto la hereda por el merge sobre i18n.en.
+                { label: t.scriptInfoPrivacy, value: t.scriptInfoPrivacyText },
                 { label: "☕ Ko-fi:", value: "ko-fi.com/g31w0fw0rld", isLink: true },
             ];
             const titleEl = document.createElement('div');
@@ -1748,6 +1781,7 @@
                     a.href = "https://" + l.value;
                     a.textContent = l.value;
                     a.target = "_blank";
+                    a.rel = "noopener noreferrer";
                     a.style.color = colors.primaryLight;
                     a.style.textDecoration = "underline";
                     row.appendChild(a);
