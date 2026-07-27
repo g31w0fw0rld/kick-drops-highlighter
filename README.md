@@ -30,6 +30,12 @@ Userscript de Tampermonkey que clasifica y resalta drops/campañas en Kick segú
 
 **Site:** `kick.com/drops/*`
 
+## Privacidad / Privacy
+
+**ES:** tus keywords y ajustes se guardan solo en tu navegador, en el almacenamiento del gestor de userscripts (keywords, drops descartados del inventario, notificaciones ya mostradas y preferencias del panel). Las consultas de drops e inventario van **únicamente a la API de Kick** (`web.kick.com`, el único host declarado en `@connect`) reusando tu propia sesión: el script toma la cabecera `Authorization` de las peticiones que la propia página hace a Kick, la mantiene **solo en memoria** —nunca la escribe en disco— y solo la captura cuando la URL resuelve a `kick.com`, nunca de peticiones a terceros. Los avisos son notificaciones locales del navegador. No hay terceros involucrados y no se envía nada al autor del script.
+
+**EN:** your keywords and settings stay in your browser only, in the userscript manager's storage (keywords, drops dismissed from the inventory, notifications already shown and panel preferences). Drop and inventory queries go **exclusively to Kick's own API** (`web.kick.com`, the only host declared in `@connect`), reusing your existing session: the script takes the `Authorization` header from the requests the page itself makes to Kick, keeps it **in memory only** —never written to disk— and only captures it when the URL resolves to `kick.com`, never from third-party requests. Alerts are local browser notifications. No third parties are involved and nothing is sent to the script author.
+
 ## Apoyar / Support
 
 Esto es parte de algo que estoy construyendo para crecer. Si te sirve y quieres apoyar, puedes invitarme un café en **[Ko-fi](https://ko-fi.com/g31w0fw0rld)** —solo si quieres—; y si hay una causa que lo necesite más que yo, ayúdala a ella.
