@@ -1,0 +1,59 @@
+# Espeja `main` en `master` en cada push. NO es una rama de desarrollo: `master`
+# es un espejo de solo escritura automática y nadie debe commitear en ella.
+#
+# ¿Por qué existe?
+# OpenUserJS sincroniza los scripts importados desde GitHub por webhook, pero
+# tiene `master` hardcodeado en dos sitios de su código:
+#
+#   - controllers/scriptStorage.js -> `if (payload.ref !== 'refs/heads/master')`
+#     responde 403 "Default branch is not `master`" (visible en
+#     Settings -> Webhooks -> Recent Deliveries).
+#   - libs/repoManager.js -> descarga de
+#     raw.githubusercontent.com/<user>/<repo>/master<path>
+#
+# Estos repos usan `main`, así que el webhook nunca disparaba y cada release
+# había que subirla a mano a OpenUserJS. No hay ajuste posible desde su UI, y
+# reimportar el script perdería instalaciones, comentarios e historial.
+#
+# ¿Por qué un workflow y no un refspec local?
+# `git config --add remote.origin.push refs/heads/main:refs/heads/master` solo
+# actúa con `git push` a secas: un `git push origin main` explícito lo ignora y
+# `master` se queda atrás EN SILENCIO, con lo que OpenUserJS sincronizaría
+# código viejo sin avisar. Esto corre en el servidor, así que cubre cualquier
+# push, los merges de PR desde la web y las ediciones hechas en github.com.
+#
+# Cómo desmontarlo cuando OpenUserJS acepte `main`:
+#   1. Borrar este archivo.
+#   2. Borrar la rama remota: `git push origin --delete master`
+#   3. Quitar la nota correspondiente de ~/code/CLAUDE.md
+#
+# Si algún día falla con "non-fast-forward" es que `master` divergió (alguien
+# commiteó ahí). Se arregla con `git push --force origin main:master`; el fallo
+# es intencionadamente visible en vez de silencioso.
+
+name: mirror main -> master
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror-master
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 -> GitHub rechaza los pushes hechos desde un clon
+      # shallow ("shallow update not allowed"). Los repos son de un solo
+      # archivo, así que el historial completo no cuesta nada.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Adelantar master al commit recién pusheado en main
+        run: git push origin ${{ github.sha }}:refs/heads/master
