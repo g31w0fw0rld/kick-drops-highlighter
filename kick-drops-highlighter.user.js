@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.4
 // @description  Clasifica y resalta drops/campanas en Kick segun keywords persistentes y editables. Interfaz multiidioma.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.3";
+    const SCRIPT_VERSION = "1.2.4";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -3237,9 +3237,14 @@
             return `${h}h ${mm}m`;
         }
 
-        // Parse total required minutes from the LI's "X% de N h" / "N hours" text.
-        // Combines hours+minutes when both are present.
-        function _parseRequiredFromKickLi(li) {
+        // Lee el tiempo que muestra el LI y dice QUE tiempo es. Kick usa dos formatos
+        // para el mismo dato y significan cosas opuestas:
+        //   - "7% de 1 h"       -> el tiempo es el TOTAL requerido del tier.
+        //   - "49 min to unlock"-> el tiempo es lo que FALTA (total - visto).
+        // El discriminante es el "%": solo el formato viejo lo trae. Tomar el segundo
+        // como total daba "550 / 49 min · 1122%" y "restante 0m" en una campaña con
+        // 550 min vistos de 600. Combina horas+minutos cuando vienen los dos.
+        function _parseKickLiTime(li) {
             const statusSpan = li.querySelector('.text-surface-onSurfaceSecondary');
             const txt = statusSpan ? (statusSpan.textContent || '').toLowerCase() : '';
             let h = 0, m = 0;
@@ -3247,8 +3252,8 @@
             if (mHours) h = parseFloat(mHours[1].replace(',', '.'));
             const mMin = txt.match(/(\d+)\s*(?:minutes?|minutos?|min\b)/);
             if (mMin) m = parseInt(mMin[1], 10);
-            if (h <= 0 && m <= 0) return 0;
-            return Math.round(h * 60) + m;
+            const minutes = (h <= 0 && m <= 0) ? 0 : Math.round(h * 60) + m;
+            return { minutes, isTotal: txt.includes('%') };
         }
 
         // Parse the visible percentage from "7% de 1 h" — used as a fallback when
@@ -3314,14 +3319,16 @@
         }
 
         function _resolveKickProgress(li, rewardName) {
-            // `required` viene del DOM (texto "X% de N h") porque la API tiene
-            // varias rewards con el mismo `name` y distinto `required_units` en
-            // la misma campaña — no se puede desambiguar solo por nombre.
-            const required = _parseRequiredFromKickLi(li);
-            if (required <= 0) return null;
-
+            const parsed = _parseKickLiTime(li);
             const campaignName = _findCampaignNameForKickLi(li);
             const campaign = campaignName ? _kickCampaigns[campaignName] : null;
+
+            // Sin campaña del API y con el formato nuevo (que solo dice lo que falta)
+            // no hay de donde sacar lo visto: el modal mostraria "0 / 49 min · 0%".
+            // Mejor no resolver nada; en la practica no se ve, porque el interceptor
+            // corre en document-start y la data llega antes de que haya donde clickear,
+            // pero si pasara se arregla solo en el siguiente hover/click.
+            if (!campaign && !parsed.isTotal) return null;
 
             // `current` = `progress_units` de la campaña (minutos vistos
             // acumulados). El response confirma que se popula incluso para
@@ -3329,28 +3336,55 @@
             // progressbar de Kick siempre es 0, así que NO se usa.
             let current = campaign ? campaign.progress_units : 0;
 
-            // Fallback: si la API aún no llegó, calcular desde el % visible.
-            if (!campaign) {
+            // Fallback sin API: reconstruir lo visto desde el % visible. Solo aplica
+            // al formato viejo, que es el unico que trae total y porcentaje juntos.
+            if (!campaign && parsed.isTotal) {
                 const pct = _parsePercentFromKickLi(li);
-                if (Number.isFinite(pct)) current = Math.round(required * (pct / 100));
+                if (Number.isFinite(pct)) current = Math.round(parsed.minutes * (pct / 100));
             }
 
-            // Buscar la reward exacta por (name + required_units) para metadata.
-            let imageUrl = '';
-            if (campaign) {
-                const matchedReward = (campaign.rewards || []).find(r =>
-                    r.name === rewardName && Number(r.required_units) === required
-                );
-                if (matchedReward && matchedReward.image_url) {
-                    imageUrl = KICK_CDN_BASE + matchedReward.image_url;
-                }
+            // Total estimado a partir del DOM: directo si el texto es el total, o
+            // visto + faltante si el texto es lo que falta.
+            const domTarget = parsed.minutes > 0
+                ? (parsed.isTotal ? parsed.minutes : current + parsed.minutes)
+                : 0;
+
+            // El total bueno es el `required_units` del API; el estimado del DOM solo
+            // sirve para elegir CUAL de los tiers es este LI. Hace falta el redondeo
+            // porque Kick trunca lo que falta ("5 h" por 5 h 50 min), asi que se toma
+            // el tier mas cercano al estimado en vez de exigir igualdad: con 550 vistos,
+            // "5 h" -> 850 -> cae en el tier de 900 (15 h) y no en el de 600 (10 h).
+            // Filtrar por nombre primero acota cuando la campaña repite nombres con
+            // distinto `required_units` (e.g. "x1 entry" en ED'S DROP).
+            let candidates = campaign
+                ? (campaign.rewards || []).filter(r => Number(r.required_units) > 0)
+                : [];
+            if (rewardName && candidates.length) {
+                const byName = candidates.filter(r => r.name === rewardName);
+                if (byName.length) candidates = byName;
             }
+
+            let matched = null;
+            if (candidates.length === 1) {
+                matched = candidates[0];
+            } else if (candidates.length > 1 && domTarget > 0) {
+                matched = candidates.reduce((best, r) => (
+                    !best || Math.abs(Number(r.required_units) - domTarget) <
+                            Math.abs(Number(best.required_units) - domTarget) ? r : best
+                ), null);
+            }
+
+            const required = matched ? Number(matched.required_units) : domTarget;
+            if (required <= 0) return null;
 
             return {
                 current,
                 required,
-                rewardName: rewardName || '',
-                imageUrl,
+                // El nombre del tier tambien sale del API cuando el DOM no lo da: sus
+                // clases cambian cada tanto y el selector se queda sin match, y con el
+                // tier ya identificado no hace falta el DOM.
+                rewardName: rewardName || (matched ? (matched.name || '') : ''),
+                imageUrl: matched && matched.image_url ? KICK_CDN_BASE + matched.image_url : '',
                 campaignName,
             };
         }
@@ -3508,6 +3542,9 @@
             li.addEventListener('mouseleave', _hideKickTooltip);
             li.addEventListener('click', (e) => {
                 if (e.target.closest('a, button, input')) return;
+                // Si no hay progreso resoluble, dejar pasar el click a Kick en vez de
+                // tragarselo con un preventDefault que no abre nada.
+                if (!_resolveKickProgress(li, rewardName)) return;
                 e.preventDefault();
                 e.stopPropagation();
                 _hideKickTooltip();
@@ -3802,9 +3839,38 @@
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         }
 
+        // Aparte del modal, Kick lanza un toast de sonner ("Daily Reward Unlocked! /
+        // Claim your Daily Reward") arriba a la derecha, con un boton "Reclamar" y una X.
+        // Es un <li data-sonner-toast> fuera del dialogo, asi que _closeRewardDialog()
+        // no lo toca y se queda tapando la UI hasta que el usuario lo cierra a mano.
+        // Lo cerramos SIEMPRE por la X, nunca por "Reclamar": ese boton abre el modal
+        // del cofre por su cuenta y se pisaria con nuestro propio flujo.
+        // El matching es por el icono del cofre (mismo path que el navbar y el dialogo),
+        // no por texto, para no cerrar toasts ajenos ni depender del idioma.
+        function _dismissDailyRewardToast() {
+            document.querySelectorAll('li[data-sonner-toast]').forEach((toast) => {
+                if (!toast.querySelector('svg path[d^="M6 7.33301"]')) return;
+                let closeBtn = null;
+                const xPath = toast.querySelector('svg path[d^="M28 6.99204"]');
+                if (xPath) closeBtn = xPath.closest('button');
+                if (!closeBtn) {
+                    // Fallback: el ultimo boton que no sea el primario de reclamo.
+                    const others = toast.querySelectorAll('button:not(.bg-primary-base)');
+                    closeBtn = others[others.length - 1] || null;
+                }
+                if (closeBtn) { try { closeBtn.click(); } catch (e) { /* ignore */ } }
+            });
+        }
+
         function _checkDailyReward() {
             if (!cleanExpiredInventoryFlag) return; // atado a "reclamacion automatica"
             if (_dailyRewardBusy) return;
+
+            // El toast se limpia en cada ciclo, aunque la recompensa ya este reclamada o
+            // en cuenta regresiva: puede haber quedado de un reclamo anterior. Va antes
+            // del guard de la revision de drops porque cerrarlo no navega ni roba foco.
+            _dismissDailyRewardToast();
+
             // Esperar a que termine la revision de drops (escaneo/navegacion/auto-claim).
             if (_dropsReviewInProgress || _loadingOverlay) return;
 
@@ -3835,6 +3901,7 @@
                         // Cerrar tras dar tiempo a que se registre el reclamo.
                         setTimeout(() => {
                             _closeRewardDialog(_getOpenRewardDialog() || dialog);
+                            _dismissDailyRewardToast();
                             _dailyRewardBusy = false;
                         }, 1800);
                     } else {
