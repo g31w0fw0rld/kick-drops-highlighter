@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.9
-// @description  Highlights the Kick drop campaigns matching your keywords on the page itself, and lists them in a panel split into active, upcoming and expired, each reward with the hours it needs. Rewards you already own are ticked and struck through, a reward you earned but have not collected is flagged with 🎁, and a campaign closing within 72 hours is flagged with the time left and the watch time you still need. Hovering a drop in progress shows the exact watch time left; clicking it opens the full detail. It flags campaigns that changed with a bell in the panel and on the card, and can optionally auto-claim your finished drops and the daily reward chest Kick gives for watching streams. Keywords starting with "-" exclude, and four view filters trim the panel. Editable keywords, 16 languages, read-only API queries.
+// @version      1.2.10
+// @description  Highlights the Kick drop campaigns matching your keywords on the page itself, and lists them in a panel split into active, upcoming and expired, each reward with the hours it needs. Rewards you already own are ticked and struck through, a reward you earned but have not collected is flagged with 🎁, and a campaign closing within 72 hours is flagged with the time left and the watch time you still need. Hovering a drop in progress shows the exact watch time left; clicking it opens the full detail. It flags campaigns that changed with a bell in the panel and on the card, and can optionally auto-claim your finished drops and the daily reward chest Kick gives for watching streams. Keywords starting with "-" exclude, and four view filters trim the panel. The open list sorts by closing date or by cheapest, each open card shows the watch time you still need, and the panel says when the inventory is missing. Editable keywords, 16 languages, read-only API queries.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
 // @license      MIT
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.9";
+    const SCRIPT_VERSION = "1.2.10";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -153,7 +153,7 @@
                 scriptInfoName: "Nombre:",
                 scriptInfoVersion: "Version:",
                 scriptInfoDescription: "Descripcion:",
-                scriptInfoDescriptionText: "Resalta en la propia página las campañas de drops que coinciden con tus keywords: verde las abiertas, rojo las cerradas. El panel las lista separadas en abiertos, próximos y cerrados, con la ventana de fechas, la keyword que la encontró y cada recompensa con las horas que pide. Las recompensas que ya tienes van con ✓ y tachadas, una a una, y el badge que no tiene nada pendiente se queda sin su tiempo. Lo que ya te ganaste y no has recogido va aparte, con 🎁 y sin atenuar, porque solo le falta un clic, y el aviso de cierre tambien los cuenta. Lo que está por cerrar va primero: cuando a una recompensa que aún no tienes se le acaba el tiempo en menos de 72 h, su tarjeta dice cuánto queda y cuánto te falta por ver —rojo por debajo de 24 h— o que ya no da tiempo, y el mismo ⏳ cae en la tarjeta de la campaña en la página. Keywords editables: clic en una para borrarla, + para añadir, editarlas en bloque o restaurar las predeterminadas. Una keyword que empieza por «-» descarta: «-console» deja fuera la campaña aunque otra keyword la hubiera encontrado, y se lleva con ella el resaltado, la tarjeta y el aviso. Y cuatro filtros de vista recortan la lista de abiertos sin tocar nada mas —lo que aun te falta, lo que cierra pronto, lo que ya ganaste y no has recogido, y lo que se saca en una hora o menos—: se suman entre si, se recuerdan, y la pestaña dice cuantas tarjetas se ven de cuantas hay. En el inventario puedes ver el detalle de un drop (progreso y tiempo restante), descartar entradas con la ✕ —«Recargar drops» las devuelve— y marcar una casilla que oculta lo cerrado/completado y activa la reclamación automática, tanto de los drops terminados como del cofre de recompensa diaria que Kick da por ver streams (que no es un drop): el cofre se abre solo cuando la recompensa está disponible, se detecta sin depender del idioma y se revisa siempre después de los drops, nunca en medio. Marca con 🔔 —en el panel y en la propia tarjeta— las campañas que cambiaron desde la última vez, con una cuenta de pendientes, notificación de escritorio y un botón 👁️ que además te lleva hasta la campaña. 16 idiomas.",
+                scriptInfoDescriptionText: "Resalta en la propia página las campañas de drops que coinciden con tus keywords: verde las abiertas, rojo las cerradas. El panel las lista separadas en abiertos, próximos y cerrados, con la ventana de fechas, la keyword que la encontró y cada recompensa con las horas que pide. Las recompensas que ya tienes van con ✓ y tachadas, una a una, y el badge que no tiene nada pendiente se queda sin su tiempo. Lo que ya te ganaste y no has recogido va aparte, con 🎁 y sin atenuar, porque solo le falta un clic, y el aviso de cierre tambien los cuenta. Lo que está por cerrar va primero: cuando a una recompensa que aún no tienes se le acaba el tiempo en menos de 72 h, su tarjeta dice cuánto queda y cuánto te falta por ver —rojo por debajo de 24 h— o que ya no da tiempo, y el mismo ⏳ cae en la tarjeta de la campaña en la página. Keywords editables: clic en una para borrarla, + para añadir, editarlas en bloque o restaurar las predeterminadas. Una keyword que empieza por «-» descarta: «-console» deja fuera la campaña aunque otra keyword la hubiera encontrado, y se lleva con ella el resaltado, la tarjeta y el aviso. Y cuatro filtros de vista recortan la lista de abiertos sin tocar nada mas —lo que aun te falta, lo que cierra pronto, lo que ya ganaste y no has recogido, y lo que se saca en una hora o menos—: se suman entre si, se recuerdan, y la pestaña dice cuantas tarjetas se ven de cuantas hay. La lista de abiertos se ordena por lo que antes cierra o por lo que menos tiempo te pide, a eleccion. Y cada campaña abierta lleva en su propia tarjeta de la pagina el tiempo que te falta para su recompensa mas barata, de modo que el coste se ve haciendo scroll. Si el inventario no llega —sin el no se sabe que tienes ni cuanto llevas visto—, el panel lo dice en vez de quedarse callado con las marcas apagadas. En el inventario puedes ver el detalle de un drop (progreso y tiempo restante), descartar entradas con la ✕ —«Recargar drops» las devuelve— y marcar una casilla que oculta lo cerrado/completado y activa la reclamación automática, tanto de los drops terminados como del cofre de recompensa diaria que Kick da por ver streams (que no es un drop): el cofre se abre solo cuando la recompensa está disponible, se detecta sin depender del idioma y se revisa siempre después de los drops, nunca en medio. Marca con 🔔 —en el panel y en la propia tarjeta— las campañas que cambiaron desde la última vez, con una cuenta de pendientes, notificación de escritorio y un botón 👁️ que además te lleva hasta la campaña. 16 idiomas.",
                 scriptInfoAuthor: "Autor:",
                 scriptInfoGitHub: "GitHub:",
                 scriptInfoPrivacy: "Privacidad:",
@@ -173,6 +173,11 @@
                 noResultsFiltered: "Nada pasa los filtros activos.",
                 clearFilters: "Quitar filtros",
                 negativeKeywordHint: "escribe -palabra para descartar",
+                sortLabel: "Orden:",
+                sortUrgent: "Lo que antes cierra",
+                sortCheapest: "Lo más barato",
+                cheapestLeft: "lo más barato que te queda aquí",
+                noInventoryData: "Sin inventario: no se sabe qué tienes reclamado ni cuánto llevas visto.",
                 urgentClosesIn: "cierra en",
                 urgentNeed: "te faltan",
                 urgentNoTime: "no da tiempo",
@@ -228,7 +233,7 @@
                 scriptInfoName: "Name:",
                 scriptInfoVersion: "Version:",
                 scriptInfoDescription: "Description:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Author:",
                 scriptInfoGitHub: "GitHub:",
                 scriptInfoPrivacy: "Privacy:",
@@ -248,6 +253,11 @@
                 noResultsFiltered: "Nothing matches the active filters.",
                 clearFilters: "Clear filters",
                 negativeKeywordHint: "type -word to exclude",
+                sortLabel: "Sort:",
+                sortUrgent: "Closing first",
+                sortCheapest: "Cheapest first",
+                cheapestLeft: "cheapest tier still open here",
+                noInventoryData: "No inventory: what you own and how much you have watched are unknown.",
                 urgentClosesIn: "closes in",
                 urgentNeed: "you still need",
                 urgentNoTime: "not enough time",
@@ -286,7 +296,7 @@ addKeyword: "Keyword hinzufügen",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Skript-Informationen", scriptInfoName: "Name:",
                 scriptInfoVersion: "Version:", scriptInfoDescription: "Beschreibung:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Autor:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -302,6 +312,11 @@ addKeyword: "Keyword hinzufügen",
                 noResultsFiltered: "Nichts entspricht den aktiven Filtern.",
                 clearFilters: "Filter entfernen",
                 negativeKeywordHint: "-wort schreiben zum Ausschließen",
+                sortLabel: "Sortierung:",
+                sortUrgent: "Endet zuerst",
+                sortCheapest: "Günstigstes zuerst",
+                cheapestLeft: "günstigste noch offene Stufe hier",
+                noInventoryData: "Kein Inventar: unbekannt, was du hast und wie viel du geschaut hast.",
                 urgentClosesIn: "endet in",
                 urgentNeed: "dir fehlen",
                 urgentNoTime: "Zeit reicht nicht",
@@ -332,7 +347,7 @@ editPrompt: "Mots-clés séparés par des virgules :",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Informations du script", scriptInfoName: "Nom :",
                 scriptInfoVersion: "Version :", scriptInfoDescription: "Description :",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Auteur :", scriptInfoGitHub: "GitHub :",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -348,6 +363,11 @@ editPrompt: "Mots-clés séparés par des virgules :",
                 noResultsFiltered: "Rien ne passe les filtres actifs.",
                 clearFilters: "Retirer les filtres",
                 negativeKeywordHint: "écrivez -mot pour exclure",
+                sortLabel: "Tri :",
+                sortUrgent: "Ce qui ferme en premier",
+                sortCheapest: "Le moins cher",
+                cheapestLeft: "le palier le moins cher encore ouvert ici",
+                noInventoryData: "Sans inventaire : impossible de savoir ce que tu as ni combien tu as regardé.",
                 urgentClosesIn: "se termine dans",
                 urgentNeed: "il te manque",
                 urgentNoTime: "pas assez de temps",
@@ -378,7 +398,7 @@ editPrompt: "Keywords separadas por vírgula:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Informações do script", scriptInfoName: "Nome:",
                 scriptInfoVersion: "Versão:", scriptInfoDescription: "Descrição:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Autor:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -394,6 +414,11 @@ editPrompt: "Keywords separadas por vírgula:",
                 noResultsFiltered: "Nada passa nos filtros ativos.",
                 clearFilters: "Remover filtros",
                 negativeKeywordHint: "escreva -palavra para excluir",
+                sortLabel: "Ordem:",
+                sortUrgent: "O que fecha antes",
+                sortCheapest: "O mais barato",
+                cheapestLeft: "o nível mais barato ainda aberto aqui",
+                noInventoryData: "Sem inventário: não se sabe o que tens nem quanto já viste.",
                 urgentClosesIn: "fecha em",
                 urgentNeed: "faltam",
                 urgentNoTime: "não dá tempo",
@@ -423,7 +448,7 @@ addKeyword: "Добавить ключевое слово",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Информация о скрипте", scriptInfoName: "Имя:",
                 scriptInfoVersion: "Версия:", scriptInfoDescription: "Описание:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Автор:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -439,6 +464,11 @@ addKeyword: "Добавить ключевое слово",
                 noResultsFiltered: "Ничего не проходит активные фильтры.",
                 clearFilters: "Убрать фильтры",
                 negativeKeywordHint: "напишите -слово, чтобы исключить",
+                sortLabel: "Сортировка:",
+                sortUrgent: "Скоро закрывается",
+                sortCheapest: "Самое дешёвое",
+                cheapestLeft: "самый дешёвый из оставшихся уровней",
+                noInventoryData: "Нет инвентаря: неизвестно, что получено и сколько просмотрено.",
                 urgentClosesIn: "закроется через",
                 urgentNeed: "осталось",
                 urgentNoTime: "не успеешь",
@@ -469,7 +499,7 @@ editPrompt: "Virgülle ayrılmış anahtar kelimeler:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Script Bilgisi", scriptInfoName: "Ad:",
                 scriptInfoVersion: "Sürüm:", scriptInfoDescription: "Açıklama:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Yazar:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -485,6 +515,11 @@ editPrompt: "Virgülle ayrılmış anahtar kelimeler:",
                 noResultsFiltered: "Etkin filtrelere uyan bir şey yok.",
                 clearFilters: "Filtreleri kaldır",
                 negativeKeywordHint: "hariç tutmak için -kelime yazın",
+                sortLabel: "Sıralama:",
+                sortUrgent: "Önce kapananlar",
+                sortCheapest: "Önce en ucuz",
+                cheapestLeft: "buradaki en ucuz açık kademe",
+                noInventoryData: "Envanter yok: neye sahip olduğun ve ne kadar izlediğin bilinmiyor.",
                 urgentClosesIn: "kapanışa",
                 urgentNeed: "kalan",
                 urgentNoTime: "zaman yetmiyor",
@@ -515,7 +550,7 @@ editPrompt: "カンマ区切りのキーワード:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "スクリプト情報", scriptInfoName: "名前:",
                 scriptInfoVersion: "バージョン:", scriptInfoDescription: "説明:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "作者:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -531,6 +566,11 @@ editPrompt: "カンマ区切りのキーワード:",
                 noResultsFiltered: "有効な絞り込みに合うものがありません。",
                 clearFilters: "絞り込みを解除",
                 negativeKeywordHint: "除外するには -単語 と入力",
+                sortLabel: "並び順:",
+                sortUrgent: "終了が近い順",
+                sortCheapest: "安い順",
+                cheapestLeft: "ここで残っている最も安い枠",
+                noInventoryData: "インベントリなし: 所持状況と視聴時間が不明です。",
                 urgentClosesIn: "終了まで",
                 urgentNeed: "残り",
                 urgentNoTime: "時間が足りません",
@@ -561,7 +601,7 @@ editPrompt: "쉼표로 구분된 키워드:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "스크립트 정보", scriptInfoName: "이름:",
                 scriptInfoVersion: "버전:", scriptInfoDescription: "설명:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "작성자:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -577,6 +617,11 @@ editPrompt: "쉼표로 구분된 키워드:",
                 noResultsFiltered: "활성 필터에 맞는 항목이 없습니다.",
                 clearFilters: "필터 해제",
                 negativeKeywordHint: "제외하려면 -단어 입력",
+                sortLabel: "정렬:",
+                sortUrgent: "종료 임박순",
+                sortCheapest: "저렴한 순",
+                cheapestLeft: "여기서 남은 가장 저렴한 단계",
+                noInventoryData: "인벤토리 없음: 보유 여부와 시청 시간을 알 수 없습니다.",
                 urgentClosesIn: "종료까지",
                 urgentNeed: "남은 시간",
                 urgentNoTime: "시간이 부족",
@@ -607,7 +652,7 @@ editPrompt: "Słowa kluczowe oddzielone przecinkami:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Informacje o skrypcie", scriptInfoName: "Nazwa:",
                 scriptInfoVersion: "Wersja:", scriptInfoDescription: "Opis:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Autor:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -623,6 +668,11 @@ editPrompt: "Słowa kluczowe oddzielone przecinkami:",
                 noResultsFiltered: "Nic nie przechodzi aktywnych filtrów.",
                 clearFilters: "Usuń filtry",
                 negativeKeywordHint: "wpisz -słowo, aby wykluczyć",
+                sortLabel: "Sortowanie:",
+                sortUrgent: "Najpierw kończące się",
+                sortCheapest: "Najpierw najtańsze",
+                cheapestLeft: "najtańszy pozostały próg tutaj",
+                noInventoryData: "Brak ekwipunku: nie wiadomo, co masz ani ile obejrzano.",
                 urgentClosesIn: "kończy się za",
                 urgentNeed: "brakuje",
                 urgentNoTime: "za mało czasu",
@@ -653,7 +703,7 @@ editPrompt: "Avainsanat pilkulla eroteltuina:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Skriptin tiedot", scriptInfoName: "Nimi:",
                 scriptInfoVersion: "Versio:", scriptInfoDescription: "Kuvaus:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Tekijä:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -669,6 +719,11 @@ editPrompt: "Avainsanat pilkulla eroteltuina:",
                 noResultsFiltered: "Mikään ei läpäise aktiivisia suodattimia.",
                 clearFilters: "Poista suodattimet",
                 negativeKeywordHint: "kirjoita -sana sulkeaksesi pois",
+                sortLabel: "Järjestys:",
+                sortUrgent: "Pian päättyvät ensin",
+                sortCheapest: "Halvin ensin",
+                cheapestLeft: "halvin jäljellä oleva taso täällä",
+                noInventoryData: "Ei inventaariota: ei tiedetä mitä omistat tai kuinka paljon olet katsonut.",
                 urgentClosesIn: "päättyy",
                 urgentNeed: "jäljellä",
                 urgentNoTime: "aika ei riitä",
@@ -699,7 +754,7 @@ editPrompt: "Từ khóa phân cách bằng dấu phẩy:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Thông tin script", scriptInfoName: "Tên:",
                 scriptInfoVersion: "Phiên bản:", scriptInfoDescription: "Mô tả:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Tác giả:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -715,6 +770,11 @@ editPrompt: "Từ khóa phân cách bằng dấu phẩy:",
                 noResultsFiltered: "Không có gì qua được các bộ lọc đang bật.",
                 clearFilters: "Bỏ bộ lọc",
                 negativeKeywordHint: "gõ -từ để loại trừ",
+                sortLabel: "Sắp xếp:",
+                sortUrgent: "Sắp kết thúc trước",
+                sortCheapest: "Rẻ nhất trước",
+                cheapestLeft: "mốc rẻ nhất còn lại ở đây",
+                noInventoryData: "Không có kho đồ: không biết bạn đã có gì hay đã xem bao lâu.",
                 urgentClosesIn: "kết thúc sau",
                 urgentNeed: "còn thiếu",
                 urgentNoTime: "không kịp",
@@ -745,7 +805,7 @@ editPrompt: "逗号分隔的关键词：",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "脚本信息", scriptInfoName: "名称：",
                 scriptInfoVersion: "版本：", scriptInfoDescription: "描述：",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "作者：", scriptInfoGitHub: "GitHub：",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -761,6 +821,11 @@ editPrompt: "逗号分隔的关键词：",
                 noResultsFiltered: "没有内容符合当前筛选条件。",
                 clearFilters: "清除筛选",
                 negativeKeywordHint: "输入 -词 可排除",
+                sortLabel: "排序:",
+                sortUrgent: "即将结束优先",
+                sortCheapest: "最省时优先",
+                cheapestLeft: "此处剩余最省时的档位",
+                noInventoryData: "无库存数据：不清楚你已拥有什么、看了多久。",
                 urgentClosesIn: "距结束",
                 urgentNeed: "还需",
                 urgentNoTime: "时间不够",
@@ -791,7 +856,7 @@ editPrompt: "كلمات مفتاحية مفصولة بفواصل:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "معلومات السكربت", scriptInfoName: "الاسم:",
                 scriptInfoVersion: "الإصدار:", scriptInfoDescription: "الوصف:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "المؤلف:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -807,6 +872,11 @@ editPrompt: "كلمات مفتاحية مفصولة بفواصل:",
                 noResultsFiltered: "لا شيء يجتاز المرشحات المفعّلة.",
                 clearFilters: "إزالة المرشحات",
                 negativeKeywordHint: "اكتب -كلمة للاستبعاد",
+                sortLabel: "الترتيب:",
+                sortUrgent: "الأقرب انتهاءً أولاً",
+                sortCheapest: "الأقل وقتًا أولاً",
+                cheapestLeft: "أقل مستوى متبقٍ هنا",
+                noInventoryData: "لا يوجد مخزون: لا يُعرف ما لديك ولا كم شاهدت.",
                 urgentClosesIn: "ينتهي خلال",
                 urgentNeed: "يتبقى",
                 urgentNoTime: "الوقت لا يكفي",
@@ -837,7 +907,7 @@ editPrompt: "अल्पविराम से अलग कीवर्ड:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "स्क्रिप्ट जानकारी", scriptInfoName: "नाम:",
                 scriptInfoVersion: "संस्करण:", scriptInfoDescription: "विवरण:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "लेखक:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -853,6 +923,11 @@ editPrompt: "अल्पविराम से अलग कीवर्ड:",
                 noResultsFiltered: "सक्रिय फ़िल्टर से कुछ भी मेल नहीं खाता।",
                 clearFilters: "फ़िल्टर हटाएँ",
                 negativeKeywordHint: "बाहर रखने के लिए -शब्द लिखें",
+                sortLabel: "क्रम:",
+                sortUrgent: "पहले बंद होने वाले",
+                sortCheapest: "पहले सबसे सस्ते",
+                cheapestLeft: "यहाँ बचा सबसे सस्ता स्तर",
+                noInventoryData: "इन्वेंट्री नहीं: पता नहीं आपके पास क्या है और कितना देखा है।",
                 urgentClosesIn: "समाप्त होने में",
                 urgentNeed: "बाकी",
                 urgentNoTime: "समय कम है",
@@ -883,7 +958,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔", removeIcon: "❌",
                 scriptInfoTitle: "Informasi Script", scriptInfoName: "Nama:",
                 scriptInfoVersion: "Versi:", scriptInfoDescription: "Deskripsi:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page itself: green for open, red for closed. The panel lists them split into active, upcoming and expired, with the date window, the keyword that matched and each reward with the hours it needs. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need for its cheapest reward, so the cost is visible while scrolling. If the inventory never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. In the inventory you can see a drop's details (progress and time remaining), dismiss entries with the ✕ —\"Reload drops\" brings them back— and tick a checkbox that hides expired/completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that also takes you to the campaign. 16 languages.",
                 scriptInfoAuthor: "Penulis:", scriptInfoGitHub: "GitHub:",
                 loadingDropsFromInventory: "Reading drops from campaigns, please wait...",
                 loadingDrops: "Searching drops...",
@@ -899,6 +974,11 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 noResultsFiltered: "Tidak ada yang lolos filter aktif.",
                 clearFilters: "Hapus filter",
                 negativeKeywordHint: "ketik -kata untuk mengecualikan",
+                sortLabel: "Urutan:",
+                sortUrgent: "Yang tutup dulu",
+                sortCheapest: "Yang termurah dulu",
+                cheapestLeft: "tingkat termurah yang tersisa di sini",
+                noInventoryData: "Tanpa inventaris: tidak diketahui apa yang kamu punya atau berapa lama menonton.",
                 urgentClosesIn: "berakhir dalam",
                 urgentNeed: "kurang",
                 urgentNoTime: "waktu tidak cukup",
@@ -925,6 +1005,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
         const INVENTORY_DELETED_KEYS = "kick_inventory_deleted_drops";
         const STORAGE_NOTIFS = "kick_drop_notifications";
         const VIEW_FILTERS_KEY = "kick_drops_view_filters";
+        const SORT_MODE_KEY = "kick_drops_sort_mode";
 
         // Filtros de vista. El orden es el de la barra: de lo mas general a lo mas
         // concreto.
@@ -932,6 +1013,14 @@ editPrompt: "Kata kunci dipisahkan koma:",
 
         // "Un rato corto": el tramo que se saca en una sesion sin planificarla.
         const QUICK_MAX_MINUTES = 60;
+
+        // Orden de la pestaña de abiertos. 'urgent' es el de siempre y sigue siendo
+        // el de por defecto: la fecha de cierre es la unica que se pierde sola.
+        const SORT_MODES = ['urgent', 'cheapest'];
+
+        // Antes de avisar de que falta el inventario se esperan unos segundos: al
+        // arrancar el dato aun no ha llegado y eso no es un fallo, es una carrera.
+        const INVENTORY_WARN_DELAY_MS = 8000;
 
         const ORIGINAL_TITLE = document.title || (document.querySelector('title') ? document.querySelector('title').textContent : '');
 
@@ -1117,6 +1206,17 @@ editPrompt: "Kata kunci dipisahkan koma:",
         function setViewFilters(list) {
             const clean = (list || []).filter(id => VIEW_FILTER_IDS.includes(id));
             GM_setValue(VIEW_FILTERS_KEY, JSON.stringify(clean));
+        }
+
+        // Mismo criterio que los filtros: un valor desconocido cae al de por
+        // defecto en vez de dejar la lista en un orden que nadie implementa.
+        function getSortMode() {
+            const v = GM_getValue(SORT_MODE_KEY, null);
+            return SORT_MODES.includes(v) ? v : 'urgent';
+        }
+
+        function setSortMode(mode) {
+            GM_setValue(SORT_MODE_KEY, SORT_MODES.includes(mode) ? mode : 'urgent');
         }
 
         // ---------------------------------------------
@@ -1536,6 +1636,10 @@ editPrompt: "Kata kunci dipisahkan koma:",
             _buildKickProgressMap();
             _buildClaimedRewardIndex();
             _updateAllCardsWithDropNames();
+            // El aviso de "sin inventario" se apaga aqui y no cuando vence el
+            // temporizador: este es el momento en que la afirmacion deja de ser
+            // cierta.
+            _updateInventoryWarning();
         }
 
         // =============================================
@@ -1706,6 +1810,50 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 const drops = _findDropNamesForTitle(item && item.title);
                 return on.every(id => _passesViewFilter(id, drops));
             });
+        }
+
+        // =============================================
+        // LO QUE TE QUEDA Y EN QUE ORDEN
+        // =============================================
+
+        // Minutos que te faltan para el tramo pendiente MAS BARATO de la campaña.
+        // Al reves que el "te faltan" del aviso de cierre, este no mira fechas: es
+        // el precio de entrada de la campaña, corra prisa o no.
+        //
+        // Tres valores con tres significados distintos, y hay que respetarlos:
+        //   null = no se sabe (sin inventario) o no queda nada pendiente
+        //   0    = ya te lo ganaste y solo falta pulsar
+        //   >0   = minutos de visualizacion que te faltan
+        function _cheapestRemaining(drops) {
+            if (!drops || drops.length === 0) return null;
+            let best = null;
+            for (const d of drops) {
+                if (_isDropClaimed(d) === true) continue;
+                const watched = _watchedMinutesFor(d);
+                // Sin minutos vistos no hay resta posible, y aqui no se inventa un
+                // 0: decirle "te faltan 10 h" a quien lleva 9 vistas es peor que
+                // no decir nada.
+                if (watched === null) return null;
+                const rest = Math.max(0, (Number(d.minutes) || 0) - watched);
+                if (best === null || rest < best) best = rest;
+            }
+            return best;
+        }
+
+        // Lo mas barato primero. Lo que no se puede juzgar se va al final con
+        // Infinity y conserva el orden de la pagina, porque sort() es estable —la
+        // misma regla que usa el orden por urgencia—. Un tramo ya ganado vale 0 y
+        // sube del todo: no le falta tiempo, le falta un clic.
+        function _cheapestSortKey(item) {
+            const rest = _cheapestRemaining(_findDropNamesForTitle(item && item.title));
+            return rest === null ? Infinity : rest;
+        }
+
+        // Devuelve una COPIA ordenada: el array original lo mantiene el escaneo de
+        // la pagina y reordenarlo romperia la correspondencia con los nodos.
+        function _sortActive(items) {
+            const key = getSortMode() === 'cheapest' ? _cheapestSortKey : _urgencySortKey;
+            return [...(items || [])].sort((a, b) => key(a) - key(b));
         }
 
         function checkAndHandleScriptVersion() {
@@ -2329,6 +2477,92 @@ editPrompt: "Kata kunci dipisahkan koma:",
             return row;
         }
 
+        // ---------------------------------------------
+        // Barra de orden
+        // ---------------------------------------------
+        // Dos chips excluyentes, no un desplegable: son dos y se ve de un vistazo
+        // cual manda. Comparten pintado con los filtros para que se lean como la
+        // misma familia, pero se comportan como una radio.
+        function createSortBar() {
+            const row = document.createElement("div");
+            Object.assign(row.style, {
+                display: "flex", flexWrap: "wrap", gap: "4px",
+                alignItems: "center", marginBottom: "10px"
+            });
+            const label = document.createElement("span");
+            label.textContent = t.sortLabel || "Sort:";
+            Object.assign(label.style, { fontSize: "11px", color: colors.gray, marginRight: "2px" });
+            row.appendChild(label);
+
+            const defs = [
+                { id: 'urgent', label: "⏳ " + (t.sortUrgent || "Closing first") },
+                { id: 'cheapest', label: "⏱ " + (t.sortCheapest || "Cheapest first") }
+            ];
+            const current = getSortMode();
+            defs.forEach(def => {
+                const chip = document.createElement("span");
+                chip.className = "kick-sort-mode";
+                chip.setAttribute("data-sort-id", def.id);
+                chip.textContent = def.label;
+                Object.assign(chip.style, {
+                    padding: "2px 8px", borderRadius: "12px", fontSize: "11px",
+                    cursor: "pointer", transition: "all 0.15s", userSelect: "none",
+                    border: `1px solid ${colors.border}`
+                });
+                _paintFilterChip(chip, current === def.id);
+                chip.onclick = () => {
+                    if (getSortMode() === def.id) return;
+                    setSortMode(def.id);
+                    document.querySelectorAll(".kick-sort-mode").forEach(c => {
+                        _paintFilterChip(c, c.getAttribute("data-sort-id") === def.id);
+                    });
+                    _rerenderPanes();
+                };
+                row.appendChild(chip);
+            });
+            return row;
+        }
+
+        // ---------------------------------------------
+        // Aviso de que falta el inventario
+        // ---------------------------------------------
+        // Sin /drops/progress desaparecen en silencio los ✓, los 🎁, el "te faltan"
+        // y los filtros de estado dejan pasar todo. Callarselo hace que el panel
+        // parezca simplemente un dia sin novedades, que es lo contrario de lo que
+        // pasa: es un panel que no sabe nada de ti.
+        function _updateInventoryWarning() {
+            const el = document.getElementById("kick-drops-inventory-warning");
+            if (!el) return;
+            el.style.display = _progressInventoryReady ? "none" : "flex";
+        }
+
+        function _scheduleInventoryWarning() {
+            setTimeout(_updateInventoryWarning, INVENTORY_WARN_DELAY_MS);
+        }
+
+        function createInventoryWarning() {
+            const el = document.createElement("div");
+            el.id = "kick-drops-inventory-warning";
+            Object.assign(el.style, {
+                // Arranca escondido siempre: lo enciende el temporizador, no el
+                // estado del momento, para no parpadear durante el arranque.
+                display: "none",
+                alignItems: "center", gap: "6px",
+                padding: "6px 8px", marginBottom: "6px",
+                backgroundColor: colors.orange + "15",
+                border: `1px solid ${colors.orange}40`,
+                borderRadius: "6px", fontSize: "11px",
+                color: colors.orange
+            });
+            const icon = document.createElement("span");
+            icon.textContent = "⚠";
+            el.appendChild(icon);
+            el.appendChild(document.createTextNode(
+                t.noInventoryData || "No inventory: what you own and what you have watched are unknown."
+            ));
+            return el;
+        }
+
         function createInventoryCheckboxes(inline = false) {
             const container = document.createElement('div');
             Object.assign(container.style, {
@@ -2624,6 +2858,9 @@ editPrompt: "Kata kunci dipisahkan koma:",
             // View filters
             body.appendChild(createViewFilterBar());
 
+            // Sort mode
+            body.appendChild(createSortBar());
+
             // Tabs: Active | Upcoming | Expired | Notifications
             const tabBar = document.createElement("div");
             Object.assign(tabBar.style, {
@@ -2726,6 +2963,8 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 document.head.appendChild(style);
             }
             body.appendChild(apiLoadingEl);
+            body.appendChild(createInventoryWarning());
+            _scheduleInventoryWarning();
 
             body.appendChild(tabContent);
 
@@ -3035,10 +3274,9 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 }
             };
 
-            // Lo que antes cierra, primero, y solo en Activos: en Proximos no hay
-            // nada que se acabe y en Cerrados ya se acabo. Se ordena una copia para
-            // no tocar el array que mantiene el escaneo de la pagina.
-            const sortedActive = [...shownActive].sort((a, b) => _urgencySortKey(a) - _urgencySortKey(b));
+            // El orden elegido, y solo en Activos: en Proximos no hay nada que se
+            // acabe ni que te falte, y en Cerrados ya se acabo.
+            const sortedActive = _sortActive(shownActive);
 
             fillPane(activePane, sortedActive, colors.primary, totalActive > 0 && shownActive.length === 0);
             fillPane(upcomingPane, upcomingItems, colors.upcoming, false);
@@ -3679,10 +3917,27 @@ editPrompt: "Kata kunci dipisahkan koma:",
                     pageMark(t.changedIcon || '🔔', colors.orange, t.changes_detected || '', 'drop-page-bell');
                 }
                 if (status === 'active') {
-                    const urgency = _computeUrgency(_findDropNamesForTitle(displayTitle));
+                    const drops = _findDropNamesForTitle(displayTitle);
+                    const urgency = _computeUrgency(drops);
                     if (urgency) {
-                        pageMark(`⏳ ${_formatCountdown(urgency.minutesLeft)}`,
-                            _urgencyColor(urgency), _urgencyText(urgency));
+                        // Cuando corre prisa, las dos cosas van juntas en la misma
+                        // marca: el cierre sin el coste no dice si merece la pena
+                        // empezar.
+                        let txt = `⏳ ${_formatCountdown(urgency.minutesLeft)}`;
+                        if (urgency.needed !== null) {
+                            txt += ` · ${t.urgentNeed || 'you still need'} ${formatHoursMinutes(urgency.needed)}`;
+                        }
+                        pageMark(txt, _urgencyColor(urgency), _urgencyText(urgency));
+                    } else {
+                        // Y cuando no corre prisa, el coste solo, en gris: el reloj
+                        // de arena es del aviso de cierre y aqui no hay cierre que
+                        // avisar. El 0 se calla porque ya lo dice el 🎁 del panel:
+                        // ahi no falta tiempo, falta un clic.
+                        const rest = _cheapestRemaining(drops);
+                        if (rest !== null && rest > 0) {
+                            pageMark(`⏱ ${formatHoursMinutes(rest)}`, colors.gray,
+                                t.cheapestLeft || 'cheapest tier still open here');
+                        }
                     }
                 }
             }
@@ -4744,7 +4999,12 @@ editPrompt: "Kata kunci dipisahkan koma:",
                         node.querySelector('[class*="font-bold"]');
                     if (!gameNameEl) return;
                     const text = gameNameEl.textContent.trim().toLowerCase();
-                    if (!keywords.some((k) => text.includes(k))) return;
+                    // El mismo criterio que el escaneo, negativas incluidas. Una
+                    // campaña descartada no debe dar la pagina por lista: si es la
+                    // unica que hay, es mejor agotar los intentos y decir "no se
+                    // encontro nada, edita las keywords" que enseñar una pestaña
+                    // vacia sin explicar por que.
+                    if (!_matchesKeywords(text)) return;
                     if (seenTitlesLocal.has(text)) return;
                     seenTitlesLocal.add(text);
                     found++;
