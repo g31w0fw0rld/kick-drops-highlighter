@@ -15,7 +15,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 
 ![The inventory tab, with the exact time remaining shown next to an in-progress drop](docs/screenshot-inventory.png)
 
-*Inventory: hovering a drop in progress shows **exactly how much watch time is left** — Kick only tells you the tier it unlocks at. Each entry also gets an ✕ to take it out of the view. / Inventario: al pasar el ratón por un drop en progreso sale **cuánto tiempo de visualización falta exactamente** — Kick solo te dice el tramo en que se desbloquea. Cada entrada tiene además una ✕ para sacarla de la vista.*
+*Inventory: hovering a drop in progress shows **exactly how much watch time is left** — Kick only tells you the tier it unlocks at. Each entry also gets an ✕ to take it out of the view. In the panel beside it, **the rewards you already own are ticked and struck through**, and a badge with nothing left to earn drops its watch time. / Inventario: al pasar el ratón por un drop en progreso sale **cuánto tiempo de visualización falta exactamente** — Kick solo te dice el tramo en que se desbloquea. Cada entrada tiene además una ✕ para sacarla de la vista. En el panel de al lado, **las recompensas que ya tienes van con ✓ y tachadas**, y el badge que no tiene nada pendiente se queda sin su tiempo.*
 
 <img src="docs/screenshot-drop-details.png" width="380" alt="The drop details popover showing progress, time remaining, rewards and the Accept button">
 
@@ -32,6 +32,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 **The panel**
 - A floating panel, collapsible and remembered, listing what matched split into **Active**, **Upcoming** and **Expired**, each with a count so you know at a glance whether it is worth looking.
 - Every entry shows the campaign, the studio, the exact window it runs, the keyword that matched it and **each reward with the hours needed to unlock it**.
+- **Rewards you already own are marked** — ticked, struck through and dimmed, one by one, so what is left to earn is what stands out. Two rewards that ask for the same watch time are not the same drop, so each one is checked separately, and when every reward on a badge is already yours the badge drops the watch time it asked for and says **Claimed** on hover instead.
 - **Reload drops** re-queries without a page refresh, and also brings back anything you dismissed from the inventory.
 
 **Keywords**
@@ -82,6 +83,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 **El panel**
 - Un panel flotante, plegable y recordado, que lista lo que coincidió separado en **Abiertos**, **Próximos** y **Cerrados**, cada uno con su cuenta para saber de un vistazo si vale la pena mirar.
 - Cada entrada muestra la campaña, el estudio, la ventana exacta en que corre, la palabra clave que la encontró y **cada recompensa con las horas que hacen falta para desbloquearla**.
+- **Las recompensas que ya tienes vienen marcadas** —con ✓, tachadas y atenuadas, una por una—, así lo que resalta es lo que te falta por conseguir. Dos recompensas que piden el mismo tiempo no son el mismo drop, así que cada una se comprueba por separado, y cuando todas las de un badge ya son tuyas el badge deja de mostrar el tiempo que pedía y dice **Reclamados** al pasar el ratón.
 - **Recargar drops** vuelve a consultar sin refrescar la página, y además devuelve lo que hayas descartado del inventario.
 
 **Palabras clave**
