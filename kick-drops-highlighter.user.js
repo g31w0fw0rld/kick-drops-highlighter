@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.5
+// @version      1.2.6
 // @description  Highlights the Kick drop campaigns matching your keywords on the page itself, and lists them in a panel split into active, upcoming and expired, each reward with the hours it needs. Hovering a drop in progress shows the exact watch time left; clicking it opens the full detail. It flags campaigns that changed with a bell in the panel and on the card, and can optionally auto-claim your finished drops and the daily reward chest Kick gives for watching streams. Editable keywords, 16 languages, read-only API queries.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.5";
+    const SCRIPT_VERSION = "1.2.6";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -94,7 +94,9 @@
                         if (_onClaimedDataReady && location.pathname.includes('/inventory')) {
                             setTimeout(() => _onClaimedDataReady(), 500);
                         }
-                        if (_onProgressDataReady && location.pathname.includes('/inventory')) {
+                        // El progreso NO se limita al inventario: en /all-campaigns es
+                        // lo que marca en los badges que drops ya estan reclamados.
+                        if (_onProgressDataReady) {
                             setTimeout(() => _onProgressDataReady(), 500);
                         }
                     }
@@ -962,7 +964,13 @@ editPrompt: "Kata kunci dipisahkan koma:",
                             minutes: minutes,
                             label: (reward.name || '') + (hours >= 1 ? ` (${hours} h)` : minutes > 0 ? ` (${minutes} min)` : ''),
                             starts_at: reward.starts_at || '',
-                            ends_at: reward.ends_at || ''
+                            ends_at: reward.ends_at || '',
+                            // Identidad del drop. /drops/campaigns y /drops/progress
+                            // describen las mismas rewards con el MISMO id, asi que es
+                            // lo que permite saber cual esta reclamada. Sin id, dos
+                            // rewards que comparten tramo de minutos son
+                            // indistinguibles y el subrayado tendria que adivinar.
+                            rewardId: reward.id || ''
                         });
                     }
                     if (drops.length > 0) {
@@ -1068,10 +1076,16 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 const pane = document.getElementById(paneId);
                 if (!pane) continue;
                 pane.querySelectorAll("[data-notif-title]").forEach(card => {
-                    if (card.querySelector(".drop-api-names")) return;
                     const ct = card.getAttribute("data-notif-title");
                     const drops = _findDropNamesForTitle(ct);
-                    if (drops && drops.length > 0) _appendDropNamesTo(card, drops);
+                    if (!drops || drops.length === 0) return;
+                    // Se repinta en vez de saltarse los badges ya puestos: el estado de
+                    // reclamado llega despues que los nombres (los nombres son publicos,
+                    // el reclamado necesita el token), asi que el primer pintado se hace
+                    // sin marcas y este segundo pase es el que las añade.
+                    const previous = card.querySelector(".drop-api-names");
+                    if (previous) previous.remove();
+                    _appendDropNamesTo(card, drops);
                 });
             }
         }
@@ -1083,24 +1097,38 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "4px"
             });
             // Group by minutes (same UX as the Twitch script): one chip per watch-time
-            // bucket, with all drop names that share that time joined by ", ". A game card
-            // aggregates every sub-campaign's drops, so names are deduped within each bucket
-            // to avoid repeats when two sub-campaigns ship a same-named reward at the same time.
+            // bucket. Dentro del chip va un span POR REWARD, no un texto unico: el
+            // estado de reclamado es por reward y un game card agrega los drops de
+            // todas las sub-campañas, asi que un mismo tramo puede mezclar rewards de
+            // campañas distintas con estados distintos.
             const grouped = {};
             drops.forEach(d => {
                 const key = d.minutes || 0;
-                if (!grouped[key]) grouped[key] = [];
                 const name = d.name || '';
-                if (name && !grouped[key].includes(name)) grouped[key].push(name);
+                if (!name) return;
+                if (!grouped[key]) grouped[key] = [];
+                const claimed = _isDropClaimed(d);
+                // Se deduplica por (nombre + estado) y no solo por nombre: dos
+                // sub-campañas que reparten una reward homonima en el mismo tramo se
+                // siguen viendo como una sola mientras compartan estado, pero se
+                // separan en cuanto una esta reclamada y la otra no — que es justo lo
+                // que este badge viene a decir. Deduplicar solo por nombre haria que
+                // el subrayado de una tapara la que falta por conseguir.
+                if (grouped[key].some(x => x.name === name && x.claimed === claimed)) return;
+                grouped[key].push({ name, claimed });
             });
-            Object.entries(grouped).forEach(([min, names]) => {
+            Object.entries(grouped).forEach(([min, items]) => {
                 const minutes = parseInt(min);
                 const hours = minutes / 60;
-                let label = names.join(", ");
-                label += hours >= 1 ? ` (${hours} h)` : minutes > 0 ? ` (${minutes} min)` : '';
+                // Con el tramo entero reclamado, el tiempo que pedia ya no le sirve a
+                // nadie: desaparece de la etiqueta, y quien lo dice es el tooltip, que
+                // es donde vivia ese dato. Se reutiliza la etiqueta de la seccion de
+                // reclamados, que ya viene traducida a los 16 idiomas.
+                const allClaimed = items.length > 0 && items.every(x => x.claimed === true);
                 const chip = document.createElement("span");
-                chip.textContent = label;
-                chip.title = minutes ? `${minutes} min` : '';
+                chip.title = allClaimed
+                    ? (t.claimedInventoryTitle || 'Claimed')
+                    : (minutes ? `${minutes} min` : '');
                 Object.assign(chip.style, {
                     padding: "1px 6px",
                     backgroundColor: colors.text + "18",
@@ -1108,9 +1136,75 @@ editPrompt: "Kata kunci dipisahkan koma:",
                     border: `1px solid ${colors.text}40`,
                     borderRadius: "8px", fontSize: "10px"
                 });
+                items.forEach((item, i) => {
+                    if (i > 0) chip.appendChild(document.createTextNode(", "));
+                    if (item.claimed) {
+                        // El ✓ va en su propio span y SIN tachar: es la marca positiva
+                        // de que lo tienes, y tachado se leeria como lo contrario. El
+                        // tachado es solo para el nombre, y la opacidad hunde el
+                        // conjunto para que lo que resalte sea lo que aun falta.
+                        const tick = document.createElement("span");
+                        tick.textContent = "✓ ";
+                        tick.style.opacity = "0.6";
+                        chip.appendChild(tick);
+                    }
+                    const nameEl = document.createElement("span");
+                    nameEl.textContent = item.name;
+                    if (item.claimed) {
+                        nameEl.style.textDecoration = "line-through";
+                        nameEl.style.opacity = "0.6";
+                    }
+                    chip.appendChild(nameEl);
+                });
+                // Con el tramo entero reclamado, el tiempo que pedia ya no le sirve a
+                // nadie: lo que importa es que esta hecho. Se reutiliza la etiqueta de
+                // la seccion de reclamados, que ya viene traducida a los 16 idiomas.
+                const allClaimed = items.length > 0 && items.every(x => x.claimed === true);
+                const suffix = allClaimed
+                    ? ` (${t.claimedInventoryTitle || 'Claimed'})`
+                    : hours >= 1 ? ` (${hours} h)` : minutes > 0 ? ` (${minutes} min)` : '';
+                if (suffix) chip.appendChild(document.createTextNode(suffix));
                 container.appendChild(chip);
             });
             card.appendChild(container);
+        }
+
+        // =============================================
+        // DROPS YA RECLAMADOS (cruce con /drops/progress)
+        // =============================================
+
+        // El cruce es por id de reward y solo por id: /drops/campaigns y
+        // /drops/progress devuelven el MISMO ULID para la misma reward, asi que no
+        // hace falta adivinar por nombre. Y adivinar seria peligroso: una campaña
+        // repite el mismo nombre en varios tramos ("x1 entry" a 60, 120, 180... en
+        // ED'S DROP; "Darkness Jersey" a 600, 1200 y 1800 en las Football Drop).
+        let _claimedRewardIds = new Set();
+
+        function _buildClaimedRewardIndex() {
+            const ids = new Set();
+            for (const c of _interceptedAllCampaigns) {
+                for (const r of (c && c.rewards) || []) {
+                    if (r && r.claimed && r.id) ids.add(r.id);
+                }
+            }
+            _claimedRewardIds = ids;
+        }
+
+        // Devuelve null —no false— mientras no haya llegado /drops/progress. Sin
+        // datos no se marca nada, en vez de pintar todo como no obtenido, que seria
+        // mentir en la direccion contraria y encima con aspecto de dato.
+        function _isDropClaimed(drop) {
+            if (!_progressInventoryReady) return null;
+            return !!(drop && drop.rewardId && _claimedRewardIds.has(drop.rewardId));
+        }
+
+        // Punto unico de entrada cuando llega (o ya estaba) la data de progreso:
+        // reconstruye los dos indices y repinta los badges. Lo llaman el interceptor,
+        // el fetch explicito y el arranque.
+        function _onProgressData() {
+            _buildKickProgressMap();
+            _buildClaimedRewardIndex();
+            _updateAllCardsWithDropNames();
         }
 
         function checkAndHandleScriptVersion() {
@@ -2522,13 +2616,30 @@ editPrompt: "Kata kunci dipisahkan koma:",
         let reseted = false;
         let divIdClickAfterClick = null;
 
+        // Los campos que entran en el snapshot son los que definen "la campaña
+        // cambio". Se proyectan de forma explicita en vez de serializar el drop
+        // entero: los objetos de _apiDropNames llevan ademas identidad (rewardId) y,
+        // sobre todo, NO puede entrar aqui nada que dependa del usuario. Si el
+        // estado de reclamado formara parte del snapshot, reclamar un drop marcaria
+        // su campaña como cambiada y levantaria un 🔔 falso cada vez.
+        function _snapshotFieldsOf(drop) {
+            return {
+                name: drop.name || '',
+                minutes: drop.minutes || 0,
+                starts_at: drop.starts_at || '',
+                ends_at: drop.ends_at || ''
+            };
+        }
+
         function buildDataSnapshot(displayTitle) {
             const entry = _findEntryForTitle(displayTitle);
             if (!entry || !entry.drops || entry.drops.length === 0) {
                 return JSON.stringify({ title: displayTitle.toLowerCase() });
             }
             // Sort drops by name for consistent comparison
-            const sortedDrops = [...entry.drops].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const sortedDrops = [...entry.drops]
+                .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                .map(_snapshotFieldsOf);
             return JSON.stringify({ drops: sortedDrops });
         }
 
@@ -2947,15 +3058,31 @@ editPrompt: "Kata kunci dipisahkan koma:",
                             );
                             _claimedInventoryReady = true;
                             _progressInventoryReady = true;
+                            // Los indices y el subrayado de los badges se rehacen en
+                            // cualquier vista; la seccion de reclamados solo tiene
+                            // donde insertarse en el inventario.
+                            _onProgressData();
                             if (location.pathname.includes('/inventory')) {
                                 _renderClaimedInventory();
-                                _buildKickProgressMap();
                             }
                         }
                     } catch (e) { console.warn('[Kick Drops] Error parsing claimed inventory:', e); }
                 },
                 onerror: function (e) { console.warn('[Kick Drops] Error fetching claimed inventory:', e); }
             });
+        }
+
+        // Asegura que la data de /drops/progress este cargada estando en la vista de
+        // campañas, donde la propia pagina no la pide (solo la pide el inventario) y
+        // sin ella no se puede saber que drops estan ya reclamados. El token lo captura
+        // el interceptor de la primera peticion autenticada de Kick, que puede no haber
+        // ocurrido todavia: por eso reintenta unas cuantas veces antes de rendirse. Si
+        // nunca llega, no pasa nada visible — los badges se quedan sin marcas.
+        function _ensureProgressData(attempt = 0) {
+            if (_progressInventoryReady) { _onProgressData(); return; }
+            if (_kickAuthToken) { _fetchClaimedInventory(); return; }
+            if (attempt >= 5) return;
+            setTimeout(() => _ensureProgressData(attempt + 1), 2000);
         }
 
         // Relative time helper (e.g., "hace 3 días", "el mes pasado")
@@ -3467,11 +3594,11 @@ editPrompt: "Kata kunci dipisahkan koma:",
         }
 
         // Register progress-data callback for the document-start interceptor
-        _onProgressDataReady = _buildKickProgressMap;
+        _onProgressDataReady = _onProgressData;
 
         // If progress data was already intercepted before load fired, build the map now
         if (_progressInventoryReady && _interceptedAllCampaigns.length > 0) {
-            _buildKickProgressMap();
+            _onProgressData();
         }
 
         // Register callback so the fetch interceptor (outside load listener) can trigger render
@@ -3953,6 +4080,9 @@ editPrompt: "Kata kunci dipisahkan koma:",
                     if (!returnToInventory) _hideLoadingOverlay();
                     highlightAndLinkDrops();
                     _updateAllCardsWithDropNames();
+                    // Los badges ya estan puestos, ahora se pide lo que falta para
+                    // marcar los que ya estan reclamados; al llegar se repintan solos.
+                    _ensureProgressData();
                     if (!returnToInventory && !hadPendingClick) {
                         // Pequeno delay para que se asienten las mutaciones de DOM del
                         // escaneo (ids/badges) antes de togglear los acordeones.
