@@ -1156,14 +1156,10 @@ editPrompt: "Kata kunci dipisahkan koma:",
                     }
                     chip.appendChild(nameEl);
                 });
-                // Con el tramo entero reclamado, el tiempo que pedia ya no le sirve a
-                // nadie: lo que importa es que esta hecho. Se reutiliza la etiqueta de
-                // la seccion de reclamados, que ya viene traducida a los 16 idiomas.
-                const allClaimed = items.length > 0 && items.every(x => x.claimed === true);
-                const suffix = allClaimed
-                    ? ` (${t.claimedInventoryTitle || 'Claimed'})`
-                    : hours >= 1 ? ` (${hours} h)` : minutes > 0 ? ` (${minutes} min)` : '';
-                if (suffix) chip.appendChild(document.createTextNode(suffix));
+                if (!allClaimed) {
+                    const suffix = hours >= 1 ? ` (${hours} h)` : minutes > 0 ? ` (${minutes} min)` : '';
+                    if (suffix) chip.appendChild(document.createTextNode(suffix));
+                }
                 container.appendChild(chip);
             });
             card.appendChild(container);
