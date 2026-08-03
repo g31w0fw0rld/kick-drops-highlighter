@@ -7,7 +7,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 
 ![The campaigns list with the matching campaign outlined in green, showing the time left and the watch time still needed, next to the panel](docs/screenshot-campaigns.png)
 
-*Campaigns: matching campaigns get outlined **green** on the page itself, and each one says what it still costs you right there — here *Counter-Strike 2* is about to close, so it shows **⌛ 24 h · you still need 16m** in red; a campaign with no hurry shows a plain grey **⏱** with the time instead. The panel lists the same campaigns with their rewards, the filter chips and the sort. / Campañas: las campañas que coinciden se enmarcan en **verde** en la propia página, y cada una dice ahí mismo lo que todavía te cuesta — aquí *Counter-Strike 2* está por cerrar, así que lleva **⌛ 24 h · te faltan 16m** en rojo; una campaña sin prisa lleva en su lugar un **⏱** gris con el tiempo. El panel lista esas mismas campañas con sus recompensas, las etiquetas de filtro y el orden.*
+*Campaigns: matching campaigns get outlined **green** on the page itself, and each one says what it still costs you right there — here *Counter-Strike 2* is about to close, so it shows **⏳ 24 h · you still need 16m** in red; a campaign with no hurry shows a plain grey **⏱** with the time instead. The panel lists the same campaigns with their rewards, the filter chips and the sort. / Campañas: las campañas que coinciden se enmarcan en **verde** en la propia página, y cada una dice ahí mismo lo que todavía te cuesta — aquí *Counter-Strike 2* está por cerrar, así que lleva **⏳ 24 h · te faltan 16m** en rojo; una campaña sin prisa lleva en su lugar un **⏱** gris con el tiempo. El panel lista esas mismas campañas con sus recompensas, las etiquetas de filtro y el orden.*
 
 ![The expired tab, with the matching closed campaign outlined in red](docs/screenshot-expired.png)
 
@@ -43,7 +43,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 - **A keyword starting with `-` excludes instead of matching.** `rust` plus `-console` finds Rust and drops the console spin-off, even though `rust` is right there in its name. An exclusion beats every match, and it removes the campaign everywhere at once: no highlight on the page, no card in the panel, no 🔔. Existing alerts for what you just excluded are cleared as you add it.
 
 **View filters**
-- Four chips above the tabs — **☑ something left**, **⏳ closing soon**, **🎁 unclaimed**, **⚡ 1 h or less** — narrow what the panel shows. They are a lens, not a second keyword list: the page highlighting, the card marks and the notifications are untouched, so switching one on costs nothing and needs no reload.
+- Four chips above the tabs — **☑ something left**, **⏳ closing soon**, **🎁 unclaimed**, **⚡ Tier ≤ 1 h** — narrow what the panel shows. They are a lens, not a second keyword list: the page highlighting, the card marks and the notifications are untouched, so switching one on costs nothing and needs no reload.
 - They **add up**: turn on ⏳ and ⚡ together and you get what closes soon *and* can still be finished in an hour. They only trim the **active** tab — nothing is closing in upcoming and nothing is left to decide in expired.
 - **⚡ measures what you have left**, not what the campaign advertises: a 30-minute tier you already claimed does not make it a quick one.
 - Filters are **remembered between reloads**, so the tab counts what is showing out of what there is — `Active Drops (3/12)` — and an empty list says the filters hid it, with a link to clear them. A filter you forgot about never looks like an empty day.
@@ -52,10 +52,11 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 - **Sort the open list your way:** by whatever closes first (the default — a deadline is the only thing that runs out on its own) or by whatever asks the least time. The two chips sit under the filters. Sorting by cheapest puts a reward you already earned at the very top: nothing is left to watch there, only a click.
 
 **On the page itself**
-- **Every open campaign shows what it still costs you**, on its own card, without opening the panel: ⏱ and the watch time you need for its cheapest remaining reward. A campaign closing within 72 hours shows the deadline and the time needed together — the deadline alone does not tell you whether it is worth starting.
+- **Every open campaign shows what it still costs you**, on its own card, without opening the panel: ⏱ and the watch time you need to take **everything** that is left, which is its most expensive remaining reward — the watch time is per campaign, so one long session covers all its rewards at once and the total is not their sum. A campaign closing within 72 hours shows the deadline and the time needed together — the deadline alone does not tell you whether it is worth starting. If finishing no longer fits in the time left but the cheapest reward still does, hovering the mark says so in brackets, because there is still something to salvage.
 
 **Inventory**
 - **Hide expired/completed from the inventory** — one checkbox that also turns on **automatic claiming**, both of finished drops and of the daily reward chest below. Read the warning above before ticking it.
+- **Claiming does not depend on the language Kick is in.** The button is found by the drop's own progress bar and by attributes Kick does not translate, not by the word printed on it, so switching Kick's language does not switch the claiming off. When it cannot tell which button to press, it leaves it alone rather than guessing.
 - **Hover a drop in progress and it tells you the exact watch time left.** Kick shows the tier a reward unlocks at, not how far you still are from it; the script does that subtraction for you.
 - **Click the same drop for the full detail:** progress in minutes and percent, time remaining and the rewards it grants. If the progress cannot be worked out, the click is passed through to Kick untouched rather than swallowed.
 - **Dismiss any entry with ✕** to clear the clutter of things you do not care about; *Reload drops* brings them all back.
@@ -118,10 +119,11 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 - **Ordena los abiertos como quieras:** por lo que antes cierra (el de por defecto — una fecha es lo único que se pierde solo) o por lo que menos tiempo te pide. Las dos etiquetas van debajo de los filtros. Al ordenar por lo más barato, una recompensa que ya te ganaste sube del todo: ahí no queda nada que ver, solo un clic.
 
 **En la propia página**
-- **Cada campaña abierta enseña lo que todavía te cuesta**, en su propia tarjeta y sin abrir el panel: ⏱ y el tiempo que te falta para su recompensa más barata. Una campaña que cierra en menos de 72 h enseña el cierre y el tiempo que falta juntos — la fecha sola no te dice si merece la pena empezar.
+- **Cada campaña abierta enseña lo que todavía te cuesta**, en su propia tarjeta y sin abrir el panel: ⏱ y el tiempo que te falta para llevarte **todo** lo que queda, que es su recompensa más cara — el tiempo de visualización es por campaña, así que una misma sesión larga cuenta para todas sus recompensas a la vez y el total no es la suma. Una campaña que cierra en menos de 72 h enseña el cierre y el tiempo que falta juntos — la fecha sola no te dice si merece la pena empezar. Y si ya no da tiempo a terminarla pero sí a su recompensa más barata, lo dice al pasar el ratón por la marca, entre paréntesis, porque todavía hay algo que salvar.
 
 **Inventario**
 - **Ocultar cerrados/completados del inventario** — una sola casilla que además activa la **reclamación automática**, tanto de los drops terminados como del cofre diario de más abajo. Lee el aviso de arriba antes de marcarla.
+- **Reclamar no depende del idioma en que esté Kick.** El botón se encuentra por la barra de progreso del propio drop y por atributos que Kick no traduce, no por la palabra impresa en él, así que cambiar el idioma de Kick no apaga la reclamación. Cuando no puede saber qué botón pulsar, lo deja en paz en vez de adivinar.
 - **Pasa el ratón por un drop en progreso y te dice el tiempo de visualización que falta exactamente.** Kick muestra el tramo en que se desbloquea una recompensa, no cuánto te queda para llegar; el script hace esa resta por ti.
 - **Haz clic en ese mismo drop para el detalle completo:** progreso en minutos y porcentaje, tiempo restante y las recompensas que otorga. Si el progreso no se puede calcular, el clic se deja pasar a Kick tal cual en vez de tragárselo.
 - **Descarta cualquier entrada con la ✕** para quitarte de encima lo que no te interesa; *Recargar drops* las trae todas de vuelta.
