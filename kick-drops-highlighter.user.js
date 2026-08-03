@@ -2,7 +2,7 @@
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
 // @version      1.2.11
-// @description  Highlights the Kick drop campaigns matching your keywords on the page itself, and lists them in a panel split into active, upcoming and expired, each reward with the hours it needs. Rewards you already own are ticked and struck through, a reward you earned but have not collected is flagged with 🎁, and a campaign closing within 72 hours is flagged with the time left and the watch time you still need. Hovering a drop in progress shows the exact watch time left; clicking it opens the full detail. It flags campaigns that changed with a bell in the panel and on the card, and can optionally auto-claim your finished drops and the daily reward chest Kick gives for watching streams. Keywords starting with "-" exclude, and four view filters trim the panel. The open list sorts by closing date or by cheapest, each open card shows the watch time you still need, and the panel says when the inventory is missing. Editable keywords, 16 languages, read-only API queries.
+// @description  Highlights the Kick drop campaigns matching your keywords on the page itself, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected is flagged with a gift, and every open card shows the watch time you still need. Sort by closing date or by cheapest, trim the list with four filters, and exclude with keywords starting with "-". Optional auto-claim of finished drops and the daily chest. 16 languages, read-only API queries.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
 // @license      MIT
