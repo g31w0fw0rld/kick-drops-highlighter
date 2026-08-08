@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.14
+// @version      1.2.15
 // @description  Highlights the Kick drop campaigns matching your keywords on the page, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text to share. Optional auto-claim of finished drops and the daily chest. 16 languages, read-only API.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.14";
+    const SCRIPT_VERSION = "1.2.15";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -179,6 +179,75 @@
             if (el.style && el.style.display === 'none') return true;
         }
         return false;
+    }
+
+    // ---------------------------------------------
+    // AMBITO DEL ESCANEO
+    // ---------------------------------------------
+    // Todo lo que se lee de la pagina se lee DENTRO del <main> de drops. Fuera de el
+    // esta el resto de Kick —la barra lateral con los canales recomendados, la
+    // cabecera, el buscador—, y ahi no hay campañas: lo que se encuentre es un falso
+    // positivo con todas las consecuencias, porque el escaneo no solo lee, tambien
+    // escribe (borde de color, id drop-match-*, 🔔, ⏳) y en la pestaña de reclamados
+    // llega a esconder bloques y a pulsar botones.
+    //
+    // Reportado el 2026-08-07 con /drops/campaigns VACIA: el panel decia "Abiertos (1)"
+    // con una tarjeta "AverageAden" y ese canal de la barra lateral salia con el borde
+    // verde de campaña abierta. La cadena era esta y hace falta entenderla entera,
+    // porque el fallo NO estaba en el selector que encontro el canal:
+    //
+    //   1. sin campañas, los dos selectores buenos (el grupo `.rounded-2xl` y el
+    //      acordeon viejo) no devuelven nada;
+    //   2. eso activa el barrido de respaldo por `[data-state], .bg-surface-base`, que
+    //      no estaba acotado y recorria el documento ENTERO;
+    //   3. en la barra lateral, el item "Drops" del menu lleva el mismo `data-state`
+    //      que la pestaña activa —ya estaba documentado arriba, en _kindOfPath— y las
+    //      tarjetas de canal llevan `bg-surface-base` y el nombre en `font-bold`, que
+    //      es todo lo que processCampaignNode necesita para darlas por campaña;
+    //   4. "AverageAden" casa con la keyword `rage` por dentro, que es el
+    //      comportamiento correcto y buscado (ver _matchesKeywords), solo que aplicado
+    //      donde no tocaba.
+    //
+    // Por eso el acotado se pone AQUI y no en el selector: el respaldo seguira
+    // haciendo falta el dia que Kick vuelva a cambiar las clases, y la regla que no
+    // puede saltarse es la del ambito.
+    //
+    // El <main> es el ancla porque es el area de contenido de la SPA —la barra lateral
+    // y la cabecera son hermanas suyas, no hijas— y porque se llama igual en las cuatro
+    // pestañas. Los dialogos y los toast de Kick SI viven fuera (Radix los cuelga del
+    // body), asi que lo que los busca sigue preguntando al documento a proposito.
+    function _dropsRoot() {
+        // Primero, el <main> que contiene la barra de pestañas de /drops: es la señal
+        // que dice "este main es el de drops" sin depender de ninguna clase. Se pide
+        // por el mismo criterio que clasifica la pagina, asi que el item "Drops" de la
+        // barra lateral (que apunta a /drops, sin segundo segmento) no cuenta.
+        for (const a of document.querySelectorAll('a[href]')) {
+            let p;
+            try { p = new URL(a.getAttribute('href'), location.href).pathname; }
+            catch (e) { continue; }
+            if (!_dropsTabPath(p)) continue;
+            const main = a.closest && a.closest('main');
+            if (main) return main;
+        }
+        // Y si la barra todavia no esta montada, el unico <main> de la pagina. Cuando
+        // hay varios no se adivina: sin ambito seguro no se escanea, que es preferible
+        // a volver a leer media pagina.
+        const mains = document.querySelectorAll('main');
+        return mains.length === 1 ? mains[0] : null;
+    }
+
+    // Los nodos que se pueden leer, ya acotados. Devuelve un array (no una NodeList)
+    // para que se pueda filtrar sin convertirlo en cada sitio.
+    function _dropsQuery(selector) {
+        const root = _dropsRoot();
+        return root ? Array.from(root.querySelectorAll(selector)) : [];
+    }
+
+    // Guarda de ultima hora para los nodos que llegan por otro camino. Es barato y
+    // cierra el paso en el unico sitio por el que pasan todos.
+    function _inDropsRoot(node) {
+        const root = _dropsRoot();
+        return !!root && !!node && root.contains(node);
     }
 
     // ---------------------------------------------
@@ -3762,7 +3831,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
         function _findPageNodeByCampaignName(name) {
             const wanted = String(name || '').trim().toLowerCase();
             if (!wanted) return null;
-            for (const h of document.querySelectorAll('h2, h3')) {
+            for (const h of _dropsQuery('h2, h3')) {
                 // Ni lo que dibujamos nosotros ni las pestañas que Kick deja montadas y
                 // escondidas: llevan los mismos encabezados y el scroll no iria a ningun
                 // sitio visible.
@@ -4510,7 +4579,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
             });
 
             // STEP 1: Find all h1 section headers to determine open/upcoming/closed boundaries
-            const allH1s = Array.from(document.querySelectorAll('h1'));
+            const allH1s = _dropsQuery('h1');
 
             let closedHeaderEl = null;
             let openHeaderEl = null;
@@ -4534,7 +4603,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
             // barrido pasa por CADA `.bg-surface-base`, o sea tambien por las
             // tarjetas de sub-campaña, y aunque processCampaignNode las descarta, es
             // mejor no depender de ese descarte para no duplicar tarjetas del panel.
-            const newGameGroups = Array.from(document.querySelectorAll('.bg-surface-base.rounded-2xl'))
+            const newGameGroups = _dropsQuery('.bg-surface-base.rounded-2xl')
                 .filter(n => !_isInHiddenPanel(n));
             newGameGroups.forEach(group => {
                 processCampaignNode(group, Infinity, Infinity);
@@ -4542,7 +4611,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
 
             // STEP 2b: Find all accordion containers (campaign groups)
             // Kick uses [data-orientation="vertical"] for accordion groups
-            const accordionGroups = Array.from(document.querySelectorAll('[data-orientation="vertical"]'));
+            const accordionGroups = _dropsQuery('[data-orientation="vertical"]');
 
             // Determine section boundaries by Y position (DOM-walk is primary; these are fallbacks)
             const closedHeaderY = closedHeaderEl ? closedHeaderEl.getBoundingClientRect().top : Infinity;
@@ -4577,9 +4646,14 @@ editPrompt: "Kata kunci dipisahkan koma:",
             // filtro de pestaña oculta, porque `[data-state]` casa con los <a> de las
             // propias pestañas y `.bg-surface-base` con las tarjetas de las que estan
             // escondidas.
+            //
+            // Este es el barrido que se llevaba la barra lateral por delante cuando la
+            // pestaña estaba vacia: es el mas ancho de los tres y era el unico sin
+            // acotar (ver _dropsRoot). Corre con los otros dos a cero, o sea justo
+            // cuando no hay nada legitimo que encontrar.
             if (accordionGroups.length === 0 && newGameGroups.length === 0) {
                 // Fallback: scan all elements that look like campaign containers
-                const fallbackNodes = document.querySelectorAll('[data-state], .bg-surface-base');
+                const fallbackNodes = _dropsQuery('[data-state], .bg-surface-base');
                 fallbackNodes.forEach(node => {
                     if (_isInHiddenPanel(node)) return;
                     processCampaignNode(node, closedHeaderY, upcomingHeaderY);
@@ -4611,6 +4685,11 @@ editPrompt: "Kata kunci dipisahkan koma:",
         function processCampaignNode(node, closedHeaderY, upcomingHeaderY) {
             if (!(node instanceof HTMLElement)) return;
             if (node.id && node.id.startsWith('drop-match-')) return;
+            // Nada que viva fuera del area de drops, venga por donde venga. Los que
+            // llaman ya preguntan acotado, asi que esto es un cierre y no el filtro:
+            // aqui pasan TODOS los nodos que se marcan, y es la unica linea que no hay
+            // que acordarse de repetir al añadir un selector nuevo (ver _dropsRoot).
+            if (!_inDropsRoot(node)) return;
             // Nada de las pestañas que Kick deja montadas y escondidas: son campañas
             // de OTRA seccion (ver _isInHiddenPanel).
             if (_isInHiddenPanel(node)) return;
@@ -5048,7 +5127,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
             // "ocultar reclamados". Mirando el grupo tambien a si mismo, en cuanto se
             // ocultaba el ultimo se quedaba sin ancla y la rejilla no se re-pintaba.
             let reclamadoSection = null;
-            for (const h1 of document.querySelectorAll('h1')) {
+            for (const h1 of _dropsQuery('h1')) {
                 const txt = h1.textContent.trim().toLowerCase();
                 if (txt === 'reclamado' || txt === 'claimed') {
                     reclamadoSection = h1.closest('.flex.w-full.shrink-0.grow-0') || h1.parentElement;
@@ -5056,12 +5135,12 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 }
             }
             if (!reclamadoSection) {
-                const groups = Array.from(document.querySelectorAll('.bg-surface-base.rounded-2xl'))
+                const groups = _dropsQuery('.bg-surface-base.rounded-2xl')
                     .filter(n => !n.parentElement || !_isInHiddenPanel(n.parentElement));
                 reclamadoSection = groups.length > 0 ? groups[groups.length - 1] : null;
             }
             if (!reclamadoSection) {
-                reclamadoSection = document.querySelector('[data-orientation="vertical"]')?.parentElement;
+                reclamadoSection = _dropsQuery('[data-orientation="vertical"]')[0]?.parentElement;
             }
             if (!reclamadoSection) return;
 
@@ -5185,13 +5264,18 @@ editPrompt: "Kata kunci dipisahkan koma:",
         // pestaña vacia.
         function _hideKickClaimedBlocks() {
             if (!_isClaimedPage()) return;
-            document.querySelectorAll('.bg-surface-base.rounded-2xl').forEach(group => {
+            _dropsQuery('.bg-surface-base.rounded-2xl').forEach(group => {
                 if (group.closest('#kick-claimed-inventory')) return;
                 group.dataset.kickHidden = '1';
                 group.style.display = 'none';
             });
         }
 
+        // Este SI pregunta al documento entero, y no es un descuido: deshace lo nuestro.
+        // Lo que se escondio hay que poder devolverlo aunque hoy caiga fuera del area
+        // de drops —una version anterior pudo esconderlo desde otro sitio—; acotarlo
+        // seria dejar escondido para siempre lo que quedara fuera. Vale igual para el
+        // borrado de ids drop-match-* y de las marcas de pagina al empezar el escaneo.
         function _restoreKickClaimedBlocks() {
             document.querySelectorAll('[data-kick-hidden]').forEach(el => {
                 delete el.dataset.kickHidden;
@@ -5712,7 +5796,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 // rejilla, que es la que ademas dice cuando conseguiste cada cosa. Se
                 // detecta por la AUSENCIA de barras, no por texto, para no depender del
                 // idioma.
-                const isTrophyCase = _isClaimedPage() && !document.querySelector('[role="progressbar"]');
+                const isTrophyCase = _isClaimedPage() && _dropsQuery('[role="progressbar"]').length === 0;
 
                 // En el escaparate, esconder lo de Kick NO se decide aqui. Se decide al
                 // pintar la rejilla (ver _hideKickClaimedBlocks), que es lo unico que sabe
@@ -5732,7 +5816,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 // (el unico <h1> de la pestaña dice "Drops"), asi que esto no encuentra
                 // nada y se queda como compatibilidad.
                 if (doHide) {
-                    document.querySelectorAll('h1').forEach((h1) => {
+                    _dropsQuery('h1').forEach((h1) => {
                         const text = (h1.textContent || '').trim().toLowerCase();
                         if (!text) return;
                         if (!EXPIRED_HEADER_TEXTS.some(t => text === t)) return;
@@ -5745,7 +5829,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 // Fuera lo que cuelgue de una pestaña oculta: son campañas de otra
                 // seccion y reclamar o esconder ahi es actuar sobre lo que el usuario
                 // no esta viendo.
-                const campaignContainers = Array.from(document.querySelectorAll('.bg-surface-base'))
+                const campaignContainers = _dropsQuery('.bg-surface-base')
                     .filter(n => !_isInHiddenPanel(n));
 
                 if (campaignContainers.length === 0 && attempts >= maxAttempts) {
@@ -5854,7 +5938,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
                 // era justo lo que dejaba fuera a todos los idiomas salvo es/en.
                 if (doClaim) {
                     let fallbackSlot = claimIndex;
-                    document.querySelectorAll('[role="progressbar"][data-state="complete"]').forEach(function (bar) {
+                    _dropsQuery('[role="progressbar"][data-state="complete"]').forEach(function (bar) {
                         // El <li> acota la busqueda a un solo drop. Si no hay <li> se sube al
                         // bloque de la campana; ahi puede haber varios botones, y en ese caso
                         // findClaimButtonInDropItem se abstiene en vez de arriesgar el click.
@@ -6151,7 +6235,9 @@ editPrompt: "Kata kunci dipisahkan koma:",
         // diferida (lazy) ya nacen "closed" por default, asi que no hace falta vigilarlos.
         function collapseAllCampaignAccordions() {
             // querySelectorAll deduplica aunque un boton matchee ambos selectores.
-            const openButtons = document.querySelectorAll(
+            // Acotado al area de drops: esto CLICKEA, y fuera de ahi hay acordeones de
+            // Kick que no son nuestros (ver _dropsRoot).
+            const openButtons = _dropsQuery(
                 'button[data-radix-collection-item][data-state="open"], ' +
                 '[data-orientation="vertical"] button[data-state="open"][aria-expanded="true"]'
             );
@@ -6189,7 +6275,7 @@ editPrompt: "Kata kunci dipisahkan koma:",
 
                 // Kick campaign detection: look for accordion items with game names
                 // Try multiple selector strategies for Kick's DOM
-                const campaignNodes = document.querySelectorAll(
+                const campaignNodes = _dropsQuery(
                     '[data-orientation="vertical"] [data-state], ' +
                     '[data-orientation="vertical"] button, ' +
                     '.bg-surface-base'

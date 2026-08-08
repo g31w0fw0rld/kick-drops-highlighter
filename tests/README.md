@@ -39,6 +39,13 @@ son reales, no simulados. `waitMs` en cada test es lo que hay que subir si algo 
 | `test-cambio-pestana.js` | Navegando de verdad (pushState): que se marque al **llegar** a cerradas y a abiertas, y que enfoque una **sub-campaña** |
 | `test-foco-en-la-pagina.js` | Estando YA en la pestaña: cada tarjeta deja **su propio título** arriba —no el bloque que lo contiene— y no cambia de pestaña |
 | `test-foco-entre-pestanas.js` | Pulsar una tarjeta de otra pestaña: ida (destino guardado + pestaña correcta) y vuelta (scroll + destino consumido), en cerradas y en próximas |
+| `test-fuera-del-dom.js` | Que **solo** se lea dentro del `<main>` de drops: con las tres pestañas vacías, ni la barra lateral en el panel ni una marca fuera |
+
+Todas las páginas del arnés llevan **la barra lateral de Kick fuera del `<main>`**, con su
+menú y dos canales recomendados. No es decorado: es el sitio del que salió el falso positivo
+del 2026-08-07 —un canal recomendado pintado de verde y metido en el panel como campaña
+abierta—, y sin ella el fallo no se puede ver, porque los volcados de `docs/` son solo el
+`<main>`.
 
 ## Los fixtures
 

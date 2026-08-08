@@ -17,7 +17,35 @@ function page({ url, panels }) {
             <div class="h-full flex-1"><div class="flex flex-col gap-5">${p.html}</div></div>
         </div>`).join('\n');
 
+    // La barra lateral de Kick, FUERA del <main>. Va en todos los tests a proposito:
+    // es lo que hay de verdad en la pagina, y lo que se coló en el panel el 2026-08-07
+    // —una tarjeta "AverageAden" y un borde verde sobre un canal recomendado— cuando
+    // la pestaña de campañas estaba vacia. Reproduce las dos formas que enganchaban:
+    //   - el item "Drops" del menu, que lleva el MISMO data-state que la pestaña activa
+    //     (ya estaba documentado en el script, ver _kindOfPath).
+    //   - una tarjeta de canal con `bg-surface-base` y un nombre en `font-bold`, que es
+    //     todo lo que processCampaignNode necesita para darla por campaña. Y el nombre
+    //     casa con la keyword `rage` por dentro ("Ave-rage-Aden"), asi que si se lee,
+    //     se ve.
+    const sidebar = `
+    <div class="fixed left-0 flex w-60 flex-col gap-2" id="kick-sidebar-falsa">
+      <a href="/" class="font-semibold">Inicio</a>
+      <a href="/drops" data-state="active" class="font-semibold">Drops</a>
+      <p class="text-xs">Recomendado</p>
+      <a href="/averageaden" data-state="closed" class="bg-surface-base flex items-center gap-2">
+        <img alt="AverageAden" src="https://files.kick.com/images/user/1/avatar.webp">
+        <span class="text-sm font-bold">AverageAden</span>
+        <span class="text-xs">Slots &amp; Casino</span>
+      </a>
+      <a href="/guishorro" data-state="closed" class="bg-surface-base flex items-center gap-2">
+        <img alt="Guishorro" src="https://files.kick.com/images/user/2/avatar.webp">
+        <span class="text-sm font-bold">Guishorro</span>
+        <span class="text-xs">Counter-Strike 2</span>
+      </a>
+    </div>`;
+
     return `<!doctype html><html lang="es"><head><title>Drops</title></head><body>
+    ${sidebar}
     <main>
       <div><h2 class="text-white font-bold lg:text-2xl text-2xl">Drops y recompensas</h2>
         <div class="flex flex-col gap-4 rounded-lg py-3">
@@ -218,9 +246,26 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
                 const el = d.getElementById('kick-drops-tab-' + id);
                 return el ? el.textContent.replace(/\s+/g, ' ').trim() : null;
             };
+            // Todo lo que el script tocó FUERA del <main> de drops: ids drop-match-*,
+            // marcas de pagina, bordes de colores y bloques escondidos. Lo nuestro
+            // (el panel flotante) no cuenta: vive colgado del body a proposito.
+            const fueraDelMain = (() => {
+                const main = d.querySelector('main');
+                const tocados = Array.from(d.querySelectorAll(
+                    '[id^="drop-match-"], .kick-drop-page-mark, [style*="border: 4px solid"], [data-kick-hidden]'));
+                return tocados
+                    .filter(n => !main || !main.contains(n))
+                    .filter(n => !n.closest('#kick-drops-panel'))
+                    .map(n => ({
+                        id: n.id || null,
+                        texto: (n.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40)
+                    }));
+            })();
+
             resolve({
                 logs,
                 snaps,
+                fueraDelMain,
                 banner: banner(),
                 scrolls,
                 scrollDetalles,
