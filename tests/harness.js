@@ -65,7 +65,7 @@ function page({ url, panels }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null }) {
+function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -90,8 +90,11 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
     w.fetch = async (u) => {
         const href = String(u && u.url ? u.url : u);
         const isProgress = href.includes('/api/v1/drops/progress');
-        const payload = isProgress ? (progress || []) : (apiCampaigns || []);
-        const ok = isProgress ? !!progress : !!apiCampaigns;
+        const isChallenges = href.includes('/api/v1/gamification/challenges');
+        const payload = isChallenges ? (challenges || [])
+            : isProgress ? (progress || []) : (apiCampaigns || []);
+        const ok = isChallenges ? !!challenges
+            : isProgress ? !!progress : !!apiCampaigns;
         return {
             ok, status: ok ? 200 : 404,
             clone() { return this; },
@@ -142,6 +145,14 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
     // interceptor de verdad y no un atajo.
     if (progress) {
         w.fetch('https://web.kick.com/api/v1/drops/progress',
+            { headers: { Authorization: 'Bearer test' } });
+    }
+    // Igual con el reto diario: la pagina de Kick pide este endpoint para su modal del
+    // cofre, y el script lo aprovecha por el interceptor en vez de pedirlo aparte. Se
+    // reproduce esa peticion —no se inyecta el dato— para que el test pase por el mismo
+    // camino que el navegador.
+    if (challenges) {
+        w.fetch('https://web.kick.com/api/v1/gamification/challenges',
             { headers: { Authorization: 'Bearer test' } });
     }
     w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
@@ -262,9 +273,35 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
                     }));
             })();
 
+            // La tira del recordatorio de racha: si se ve y con que texto. El texto
+            // importa tanto como la visibilidad —los numeros salen de la API y una
+            // sustitucion mal hecha deja el «{done}» a la vista—.
+            const racha = (() => {
+                const el = d.getElementById('kick-drops-daily-reminder');
+                if (!el) return { existe: false };
+                const label = el.querySelector('.kick-daily-reminder-text');
+                return {
+                    existe: true,
+                    visible: el.style.display !== 'none',
+                    texto: label ? label.textContent : null,
+                    // Pulsa la × y devuelve lo que quedo guardado, para poder comprobar
+                    // que el silencio se ata a la ventana del reto y no a la fecha.
+                    cerrar: () => {
+                        const x = Array.from(el.querySelectorAll('span'))
+                            .find(s => s.textContent === '✕');
+                        if (x && x.onclick) x.onclick();
+                        return {
+                            visible: el.style.display !== 'none',
+                            guardado: store.get('kick_daily_streak_reminded_window') || null
+                        };
+                    }
+                };
+            })();
+
             resolve({
                 logs,
                 snaps,
+                racha,
                 fueraDelMain,
                 banner: banner(),
                 scrolls,
