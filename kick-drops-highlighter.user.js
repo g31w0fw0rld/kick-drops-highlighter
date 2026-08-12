@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.17
+// @version      1.2.18
 // @description  Highlights the Kick drop campaigns matching your keywords on the page, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text to share. Optional auto-claim of finished drops and the daily chest. 16 languages, read-only API.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -18,7 +18,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.17";
+    const SCRIPT_VERSION = "1.2.18";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -2517,10 +2517,37 @@
             }
         }
 
+        // La marca de la racha en el titulo. Un emoji y no un texto a proposito: en el
+        // titulo de la pestaña se ve un icono y como mucho dos palabras, y asi no hay que
+        // traducir nada a los 16 idiomas para algo que casi nunca se lee entero.
+        const TITLE_MARK_STREAK = '🔥';
+
+        // EL TITULO SE COMPONE EN UN SOLO SITIO, y tiene que seguir asi. Hay dos cosas que
+        // quieren aparecer ahi —los drops pendientes y la racha del dia— y cada una se
+        // entera de lo suyo por su cuenta. Escribiendo cada una directamente en
+        // document.title se pisan: la de drops restaura el titulo original en cuanto sus
+        // pendientes bajan a cero, asi que borraria la marca de la racha sin saber que
+        // existia. Por eso las dos pasan por aqui y el titulo se REARMA entero desde
+        // ORIGINAL_TITLE.
+        function _titleState() {
+            const notifs = getNotifications();
+            const pending = notifs.filter(n => !n.seen && n.changed).length;
+            const racha = !!_dailyReminderState();
+            let prefix = '';
+            if (pending > 0) prefix += `(${pending})`;
+            if (racha) prefix += (prefix ? ' ' : '') + TITLE_MARK_STREAK;
+            return { pending, racha, prefix };
+        }
+
+        // El beep de la racha suena UNA VEZ por carga de pagina, no en bucle como el de
+        // los drops. El de drops repite cada 5 s porque se apaga en cuanto marcas el aviso
+        // como visto —depende de un clic tuyo—, mientras que este se apaga cuando hayas
+        // visto 60 minutos de stream: en bucle seria un castigo de una hora.
+        let _rachaBeeped = false;
+
         function updateNotificationTitleAndSound() {
             try {
-                const notifs = getNotifications();
-                const pending = notifs.filter(n => !n.seen && n.changed).length;
+                const { pending, racha, prefix } = _titleState();
 
                 // Update tab badge
                 const tabNotifs = document.getElementById("kick-drops-tab-notifs");
@@ -2529,15 +2556,31 @@
                     tabNotifs.style.color = pending > 0 ? colors.orange : colors.gray;
                 }
 
-                if (pending > 0) {
-                    startNotificationSound();
-                    setTimeout(() => {
-                        document.title = `(${pending}) ${ORIGINAL_TITLE}`;
-                    }, 100);
+                // El bucle sigue atado SOLO a los drops (ver _rachaBeeped).
+                if (pending > 0) startNotificationSound();
+                else stopNotificationSound();
+
+                // Un solo aviso sonoro por la racha, y solo si de verdad se va a ver la
+                // tira: _dailyReminderState() ya devuelve null si la silenciaste con la ×,
+                // asi que callarla calla tambien el pitido.
+                if (racha && !_rachaBeeped) {
+                    _rachaBeeped = true;
+                    playBeep();
+                }
+
+                // Los dos plazos son los de siempre: rapido para poner la marca —hay que
+                // ganarle al titulo que escribe Kick al montar la pagina— y lento para
+                // quitarla, para no borrar un titulo que la SPA acabe de cambiar. Y solo se
+                // limpia lo que hemos escrito nosotros: si el titulo ya no empieza por
+                // nuestra marca es que manda otro y no se toca.
+                if (prefix) {
+                    setTimeout(() => { document.title = `${prefix} ${ORIGINAL_TITLE}`; }, 100);
                 } else {
-                    stopNotificationSound();
                     setTimeout(() => {
-                        if (document.title.startsWith('(')) document.title = ORIGINAL_TITLE;
+                        if (document.title.startsWith('(') ||
+                            document.title.startsWith(TITLE_MARK_STREAK)) {
+                            document.title = ORIGINAL_TITLE;
+                        }
                     }, 1000);
                 }
             } catch (e) {
@@ -3258,6 +3301,11 @@
             const el = document.getElementById('kick-drops-daily-reminder');
             if (!el) return;
             const state = _dailyReminderState();
+            // El titulo del navegador y el pitido se piden SIEMPRE, tanto si hay aviso como
+            // si no: es el mismo sitio el que los pone y los quita (ver _titleState), y
+            // saliendo antes por el `return` de abajo la marca se quedaria puesta despues de
+            // pulsar la ×.
+            updateNotificationTitleAndSound();
             if (!state) { el.style.display = 'none'; return; }
             const label = el.querySelector('.kick-daily-reminder-text');
             if (label) {
@@ -3324,6 +3372,9 @@
             close.onclick = () => {
                 if (el.dataset.window) GM_setValue(DAILY_REMINDER_KEY, el.dataset.window);
                 el.style.display = 'none';
+                // Y se rehace el titulo, que si no se queda con el 🔥 puesto hasta el
+                // siguiente repintado: callar el aviso tiene que callarlo entero.
+                _updateDailyReminder();
             };
             el.appendChild(close);
             return el;
