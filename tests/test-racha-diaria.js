@@ -20,8 +20,12 @@ const AHORA = Date.now();
 const VENTANA = { starts_at: medianocheUTC(AHORA), ends_at: medianocheUTC(AHORA + DIA) };
 const VENTANA_CERRADA = { starts_at: medianocheUTC(AHORA - 2 * DIA), ends_at: medianocheUTC(AHORA - DIA) };
 
+// Los ids van INVENTADOS aunque el resto venga de volcados reales. No son credenciales
+// —sin el Bearer no sirven de nada— pero no consta si el id del reto es del reto o de tu
+// instancia del reto, y el test no necesita el valor: para la lógica son cadenas opacas.
+// Lo que sí es real, y es lo que importa, son los números y los `status`.
 const reto = (progress, threshold, status, extra = {}) => ({
-    id: '019f1234-3dc2-71f4-a53e-7c4055ce5b12',
+    id: '00000000-0000-7000-8000-000000000001',
     recurrence: 'daily',
     status,
     condition: { progress, threshold, type: 'watch_time_minutes' },
@@ -52,8 +56,8 @@ const CASOS = [
     {
         nombre: 'claimed (volcado real)',
         challenges: [reto(60, 60, 'claimed', {
-            claimed_at: '2026-08-11T17:42:00.594596Z',
-            winner: { id: '019f1226-fd7e-76cd-a8c1-147b1b6ba101', rarity: 'common', card_url: 'https://ext.cdn.kick.com/chat/emotes/cards/x.png' }
+            claimed_at: '2026-08-11T12:00:00.000000Z',
+            winner: { id: '00000000-0000-7000-8000-000000000002', rarity: 'common', card_url: 'https://ext.cdn.kick.com/chat/emotes/cards/x.png' }
         })],
         espera: 'oculto'
     },
@@ -109,10 +113,27 @@ const CASOS = [
         });
 
         const visible = !!(r.racha.existe && r.racha.visible);
-        console.log(JSON.stringify({ caso: c.nombre, visible, texto: r.racha.texto }));
+        console.log(JSON.stringify({
+            caso: c.nombre, visible, texto: r.racha.texto,
+            titulo: r.titulo, pitidos: r.beeps
+        }));
 
         if (c.espera === 'visible' && !visible) fallos.push(`${c.nombre}: el aviso no salio`);
         if (c.espera === 'oculto' && visible) fallos.push(`${c.nombre}: el aviso salio y no debia`);
+
+        // El aviso tiene que llegar tambien a quien NO esta mirando la pestaña: marca en
+        // el titulo del navegador y un pitido. En estos casos no hay campañas, asi que
+        // todo lo que suene o se escriba viene de la racha y de nada mas.
+        const marcado = (r.titulo || '').startsWith('🔥');
+        if (c.espera === 'visible') {
+            if (!marcado) fallos.push(`${c.nombre}: el titulo no lleva la marca -> "${r.titulo}"`);
+            // UNA vez, no en bucle: este aviso no se apaga con un clic tuyo sino cuando
+            // hayas visto 60 minutos, asi que repetirlo seria una hora de pitidos.
+            if (r.beeps !== 1) fallos.push(`${c.nombre}: pito ${r.beeps} veces, se esperaba 1`);
+        } else {
+            if (marcado) fallos.push(`${c.nombre}: el titulo lleva marca sin aviso -> "${r.titulo}"`);
+            if (r.beeps !== 0) fallos.push(`${c.nombre}: pito ${r.beeps} veces sin aviso`);
+        }
         if (c.texto && visible) {
             if (!(r.racha.texto || '').includes(c.texto))
                 fallos.push(`${c.nombre}: el texto no dice "${c.texto}" -> "${r.racha.texto}"`);
@@ -128,11 +149,16 @@ const CASOS = [
         challenges: [reto(0, 60, 'in_progress')],
         waitMs: 16000
     });
-    const tras = r.racha.existe ? r.racha.cerrar() : null;
+    const tras = r.racha.existe ? await r.racha.cerrar() : null;
     console.log(JSON.stringify({ caso: 'pulsar la ×', tras }));
     if (!tras || tras.visible) fallos.push('la × no escondio el aviso');
     if (!tras || tras.guardado !== VENTANA.starts_at)
         fallos.push(`la × guardo "${tras && tras.guardado}" en vez de la ventana del reto`);
+    // Callar el aviso lo calla ENTERO: la marca del título se va con la tira. Sin esto se
+    // quedaba puesta hasta el siguiente repintado, o sea la pestaña marcada sin nada que
+    // explicara por qué.
+    if (!tras || (tras.titulo || '').startsWith('🔥'))
+        fallos.push(`la × dejo la marca en el titulo -> "${tras && tras.titulo}"`);
 
     console.log(fallos.length ? 'FALLOS:\n- ' + fallos.join('\n- ') : 'TODO OK');
     process.exit(fallos.length ? 1 : 0);

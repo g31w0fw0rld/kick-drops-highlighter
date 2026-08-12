@@ -83,7 +83,11 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
     w.GM_deleteValue = k => store.delete(k);
     w.GM_notification = () => { };
     w.GM_xmlhttpRequest = () => { };
-    w.Audio = function () { return { play() { }, pause() { }, volume: 0 }; };
+    // Se cuentan los pitidos. Hace falta para poder distinguir "suena" de "suena en
+    // bucle": el aviso de drops repite cada 5 s y el de la racha tiene que sonar UNA vez,
+    // y sin contarlos las dos cosas se ven igual.
+    const beeps = [];
+    w.Audio = function () { return { play() { beeps.push(Date.now()); }, pause() { }, volume: 0 }; };
     w.AudioContext = function () { return { createOscillator: () => ({ connect() { }, start() { }, stop() { } }), createGain: () => ({ connect() { }, gain: { value: 0 } }), destination: {}, currentTime: 0 }; };
     // Un solo stub para las dos rutas: cada una devuelve su payload. El
     // interceptor del script distingue por pathname, igual que en el navegador.
@@ -286,15 +290,20 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
                     texto: label ? label.textContent : null,
                     // Pulsa la × y devuelve lo que quedo guardado, para poder comprobar
                     // que el silencio se ata a la ventana del reto y no a la fecha.
-                    cerrar: () => {
+                    //
+                    // Espera antes de mirar: la limpieza del titulo va con 1 s de retraso a
+                    // proposito (para no borrar un titulo que la SPA acabe de cambiar), asi
+                    // que leyendolo al instante siempre saldria con la marca todavia puesta.
+                    cerrar: () => new Promise(res => {
                         const x = Array.from(el.querySelectorAll('span'))
                             .find(s => s.textContent === '✕');
                         if (x && x.onclick) x.onclick();
-                        return {
+                        setTimeout(() => res({
                             visible: el.style.display !== 'none',
-                            guardado: store.get('kick_daily_streak_reminded_window') || null
-                        };
-                    }
+                            guardado: store.get('kick_daily_streak_reminded_window') || null,
+                            titulo: w.document.title
+                        }), 1300);
+                    })
                 };
             })();
 
@@ -302,6 +311,8 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
                 logs,
                 snaps,
                 racha,
+                beeps: beeps.length,
+                titulo: d.title,
                 fueraDelMain,
                 banner: banner(),
                 scrolls,
