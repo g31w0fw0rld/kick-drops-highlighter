@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.19
+// @version      1.2.20
 // @description  Highlights the Kick drop campaigns matching your keywords on the page, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text to share. Optional auto-claim of finished drops and the daily chest. 16 languages, read-only API.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -18,7 +18,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.19";
+    const SCRIPT_VERSION = "1.2.20";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -1555,6 +1555,14 @@
             return positive.some(k => searchText.includes(k));
         }
 
+        // La mitad negativa de _matchesKeywords, suelta. Hace falta aparte porque «no
+        // casa» tiene DOS motivos que no son intercambiables: no haber encontrado ninguna
+        // positiva —que otra fuente todavia puede desmentir, ver _apiEntryForCard— o haber
+        // encontrado una negativa, que es una orden y no admite segunda opinion.
+        function _hasNegativeKeyword(searchText) {
+            return _splitKeywords(keywords).negative.some(k => searchText.includes(k));
+        }
+
         // Las que se enseñan en la tarjeta: solo positivas, porque son las que
         // explican POR QUE aparece la campaña.
         function _matchedPositiveKeywords(searchText) {
@@ -1848,6 +1856,13 @@
                         if (!_apiDropNames[key]) {
                             _apiDropNames[key] = {
                                 drops: [], displayTitle, status, imgSrc: _apiImage(campaign),
+                                // Si la clave es el nombre del JUEGO o el de la campaña.
+                                // `category` es opcional —13 de 24 el 2026-08-05— y cuando
+                                // falta, la clave pasa a ser el nombre de la campaña.
+                                // Importa para el cruce con la pagina: la fila enseña el
+                                // juego, asi que solo una clave que SEA el juego puede
+                                // casar con ella (ver _apiEntryForCard).
+                                keyIsCategory: !!categoryName,
                                 // El MISMO texto contra el que se acaba de filtrar. Se
                                 // guarda porque si no, la tarjeta no puede decir por que
                                 // esta ahi: las etiquetas se calculaban sobre el titulo
@@ -1909,6 +1924,51 @@
             }
         }
 
+        // ---------------------------------------------
+        // LA FILA QUE CASA POR ALGO QUE NO ESTA EN LA FILA
+        // ---------------------------------------------
+        // El filtro de la API mira `campaña + categoria + organizacion` y el de la pagina
+        // solo el titulo de la fila, asi que una campaña que casa por el NOMBRE DE LA
+        // CAMPAÑA salia en el panel y la pagina la dejaba sin marcar. Es el caso que este
+        // mismo fichero ya documentaba mas arriba: «rage» dentro de «ave-rage-aden $5
+        // Stake.com Bonus», con la fila diciendo «Slots & Casino - Stake.com», donde
+        // «rage» no aparece por ningun lado. Y no era solo el marcado: esa campaña no
+        // generaba aviso nunca, y al tocar la lista de keywords su aviso se borraba solo.
+        //
+        // El cruce se exige EXACTO y a proposito NO se usa _findEntryForTitle, que casa
+        // por subcadena en los dos sentidos: aflojar el filtro de la pagina con una regla
+        // laxa marcaria filas de mas, que es peor que la falta que arregla.
+        //
+        // Y solo valen las claves que SON el nombre del juego (`keyIsCategory`). Cuando
+        // `category` falta, la clave es el nombre de la campaña —«ED'S DROP»— y compararla
+        // con el juego de la fila —«KICK»— no seria identidad sino coincidencia. La
+        // consecuencia hay que decirla: las campañas sin categoria NO se rescatan por
+        // aqui, se quedan como estaban. Cerrar ese hueco pide otra clave (el id de
+        // subcategoria, que esta en la URL del banner de la fila y en `category.id`), y
+        // eso es otro trabajo.
+        function _apiEntryForCard(gameName) {
+            const g = String(gameName || '').trim().toLowerCase();
+            if (!g) return null;
+            for (const [key, entry] of Object.entries(_apiDropNames)) {
+                if (!entry || !entry.keyIsCategory) continue;
+                if (String(key).trim().toLowerCase() === g) return entry;
+            }
+            return null;
+        }
+
+        // Lo mismo para un AVISO guardado, cuyo titulo es el `displayTitle` de la entrada
+        // ("Juego - Organizacion"). Tambien exacto, y contra la misma cadena que se guardo:
+        // asi el que decide es el dato, no un parecido.
+        function _apiEntryForNotifTitle(notifTitle) {
+            const t = String(notifTitle || '').trim().toLowerCase();
+            if (!t) return null;
+            for (const [key, entry] of Object.entries(_apiDropNames)) {
+                if (!entry) continue;
+                if (String(entry.displayTitle || key).trim().toLowerCase() === t) return entry;
+            }
+            return null;
+        }
+
         // Find full API entry for a card title — returns {drops}
         function _findEntryForTitle(cardTitle) {
             if (!cardTitle) return null;
@@ -1965,7 +2025,14 @@
                 // Mismo criterio que el escaneo de la pagina, negativas incluidas:
                 // una campaña descartada no puede colarse por la puerta de atras
                 // de la API y hacer sonar la alarma.
-                if (!_matchesKeywords(titleLower)) continue;
+                //
+                // Se juzga por el texto CON EL QUE ESA ENTRADA PASO el filtro y no por el
+                // titulo que se muestra. Con el titulo, una campaña que casa por el nombre
+                // de la campaña —«rage» en «ave-rage-aden $5 Stake.com Bonus», titulo
+                // «Slots & Casino - Stake.com»— no avisaba NUNCA: entraba al panel por una
+                // puerta y se le cerraba la otra. Las negativas siguen aplicandose, que es
+                // lo que protege esta puerta.
+                if (!_matchesKeywords(entry.searchText || titleLower)) continue;
                 const exists = notifs.find(n => n.title === title || (n.title && n.title.toLowerCase() === titleLower));
                 if (!exists) {
                     const dataSnapshot = buildDataSnapshot(title);
@@ -2653,8 +2720,16 @@
             const filtered = [];
             for (const n of notifs) {
                 const title = (n.title || '').toLowerCase();
-                if (negative.some(kw => title.includes(kw))) continue;
-                if (positive.some(kw => title.includes(kw))) filtered.push(n);
+                // El aviso puede existir por algo que su TITULO no dice: el filtro de la
+                // API mira tambien el nombre de la campaña. Juzgandolo solo por el titulo,
+                // tocar la lista de keywords —incluso añadir una que no tiene nada que ver—
+                // se llevaba por delante esos avisos, y volvian a nacer al siguiente
+                // escaneo: un parpadeo sin explicacion.
+                const entry = _apiEntryForNotifTitle(n.title);
+                const apiText = (entry && entry.searchText) || '';
+                const casa = kw => title.includes(kw) || (apiText && apiText.includes(kw));
+                if (negative.some(casa)) continue;
+                if (positive.some(casa)) filtered.push(n);
             }
             saveNotifications(filtered);
             updateNotificationTitleAndSound();
@@ -5005,7 +5080,17 @@
 
             // Combine title + studio for keyword matching
             const searchText = (titleText + " " + studioText).toLowerCase();
-            if (!_matchesKeywords(searchText)) return;
+            // Si el texto de la fila no encuentra ninguna positiva, todavia puede casar
+            // por algo que la fila no enseña —el nombre de la campaña—, y eso lo sabe la
+            // API (ver _apiEntryForCard). Lo que NO admite segunda opinion es una
+            // negativa sobre el texto de la fila: ahi se descarta aunque la entrada de la
+            // API hubiera pasado el filtro, porque «no quiero esto» es una orden.
+            let apiEntry = null;
+            if (!_matchesKeywords(searchText)) {
+                if (_hasNegativeKeyword(searchText)) return;
+                apiEntry = _apiEntryForCard(titleText);
+                if (!apiEntry) return;
+            }
 
             // Display title includes studio when present
             const displayTitle = studioText ? titleText + " - " + studioText : titleText;
@@ -5123,8 +5208,13 @@
                 });
             }
 
-            // Matched keywords
-            const matchedKeywords = _matchedPositiveKeywords(searchText);
+            // Matched keywords. Cuando la fila entro por la API, las etiquetas salen del
+            // texto con el que ESA entrada paso el filtro: sobre el texto de la fila no
+            // saldria ninguna —«rage» no esta en «Slots & Casino - Stake.com»— y una
+            // tarjeta sin etiqueta es una tarjeta que no explica por que esta ahi. Es el
+            // mismo criterio que ya usan las tarjetas que vienen solo de la API.
+            const matchedKeywords = _matchedPositiveKeywords(
+                apiEntry ? (apiEntry.searchText || searchText) : searchText);
 
             // Update/create notification (using API data instead of HTML snapshots).
             // Only ACTIVE campaigns may notify. Upcoming campaigns must never raise an alert
@@ -6539,7 +6629,15 @@
                     // unica que hay, es mejor agotar los intentos y decir "no se
                     // encontro nada, edita las keywords" que enseñar una pestaña
                     // vacia sin explicar por que.
-                    if (!_matchesKeywords(text)) return;
+                    //
+                    // Y "el mismo criterio" incluye el rescate por la API: si no, una fila
+                    // que el escaneo SI va a marcar no contaba aqui, y con ella sola
+                    // delante la sonda agotaba los diez intentos —diez segundos de espera
+                    // para acabar marcandola igual—.
+                    if (!_matchesKeywords(text)) {
+                        if (_hasNegativeKeyword(text)) return;
+                        if (!_apiEntryForCard(text)) return;
+                    }
                     if (seenTitlesLocal.has(text)) return;
                     seenTitlesLocal.add(text);
                     found++;

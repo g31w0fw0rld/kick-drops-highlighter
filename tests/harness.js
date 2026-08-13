@@ -65,7 +65,7 @@ function page({ url, panels }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -249,6 +249,34 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
         }, clickPaneCards.at || 4000);
     }
 
+    // Añade una keyword como lo haria el usuario: el «+» del panel, escribir en el modal
+    // y aceptar. Es la unica puerta a removeNotificationsNotInKeywords, que se llama en
+    // cada alta —tambien de una keyword que no tiene nada que ver— y decide que avisos
+    // sobreviven. Sin poder pulsarla, ese camino solo se puede revisar leyendolo.
+    //
+    // El `location.reload()` que viene despues deja un "Not implemented: navigation" en
+    // los logs de jsdom; es ruido esperado y no afecta a lo que se comprueba, que ya
+    // esta guardado para entonces.
+    if (addKeyword) {
+        setTimeout(() => {
+            // El «+» es un <span>, no un <button>: la fila de keywords se pinta con chips.
+            // (Hay ademas un getAddKeyword() que construye un <button> «+», pero no lo
+            // llama nadie; buscar por etiqueta era buscar el que no se usa.)
+            const mas = Array.from(w.document.querySelectorAll('#kick-drops-panel span, #kick-drops-panel button'))
+                .find(b => (b.textContent || '').trim() === '+');
+            if (!mas) return;
+            mas.onclick ? mas.onclick(new w.Event('click')) : mas.click();
+            setTimeout(() => {
+                const input = w.document.querySelector('input[type="text"]');
+                if (!input) return;
+                input.value = addKeyword.value || '';
+                const ok = Array.from(w.document.querySelectorAll('button'))
+                    .find(b => /aceptar|accept/i.test((b.textContent || '').trim()));
+                if (ok && ok.onclick) ok.onclick(new w.Event('click'));
+            }, 200);
+        }, addKeyword.at || 8000);
+    }
+
     // Pulsa una tarjeta del panel como lo haria el usuario, ya con todo pintado.
     if (clickPaneCard) {
         setTimeout(() => {
@@ -348,6 +376,11 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             resolve({
                 logs,
                 snaps,
+                // Para diagnosticar los ganchos que pulsan cosas: que botones hay de
+                // verdad en el panel y que campos de texto quedaron abiertos.
+                botonesPanel: Array.from(d.querySelectorAll('#kick-drops-panel button'))
+                    .map(b => (b.textContent || '').trim()).filter(Boolean).slice(0, 20),
+                inputsEnPagina: d.querySelectorAll('input[type="text"]').length,
                 racha,
                 beeps: beeps.length,
                 titulo: d.title,

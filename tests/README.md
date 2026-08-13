@@ -40,6 +40,7 @@ son reales, no simulados. `waitMs` en cada test es lo que hay que subir si algo 
 | `test-foco-en-la-pagina.js` | Estando YA en la pestaña: cada tarjeta deja **su propio título** arriba —no el bloque que lo contiene— y no cambia de pestaña |
 | `test-foco-entre-pestanas.js` | Pulsar una tarjeta de otra pestaña: ida (destino guardado + pestaña correcta) y vuelta (scroll + destino consumido), en cerradas y en próximas |
 | `test-fuera-del-dom.js` | Que **solo** se lea dentro del `<main>` de drops: con las tres pestañas vacías, ni la barra lateral en el panel ni una marca fuera |
+| `test-casa-por-la-campana.js` | La campaña que casa por algo que la fila no enseña: se marca, dice por qué, avisa, y no se borra al añadir otra keyword — con el cruce exacto y la negativa mandando |
 | `test-racha-diaria.js` | El recordatorio del cofre diario: sale sin empezar y a medias, calla cumplido / con `status` desconocido / con otro tipo de reto, y la × lo silencia solo hasta mañana |
 
 **El script arranca una sola vez, y hay que mantenerlo así.** Todo él vive dentro de un
