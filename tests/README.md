@@ -42,6 +42,15 @@ son reales, no simulados. `waitMs` en cada test es lo que hay que subir si algo 
 | `test-fuera-del-dom.js` | Que **solo** se lea dentro del `<main>` de drops: con las tres pestañas vacías, ni la barra lateral en el panel ni una marca fuera |
 | `test-racha-diaria.js` | El recordatorio del cofre diario: sale sin empezar y a medias, calla cumplido / con `status` desconocido / con otro tipo de reto, y la × lo silencia solo hasta mañana |
 
+**El script arranca una sola vez, y hay que mantenerlo así.** Todo él vive dentro de un
+`addEventListener("load", …)`, y jsdom lanza su propio `load` además del que disparaba el
+arnés: hasta el 2026-08-12 arrancaba **dos veces**, con dos juegos completos de variables.
+No se veía —el panel no se duplica porque se busca por id— hasta que un contador propio de
+cada arranque empezó a contar el doble. Ahora el arnés espera a que jsdom termine de cargar
+con nadie escuchando, y solo entonces evalúa el script y dispara un único `load`. Quitar el
+sintético y fiarse del de jsdom **no** vale: con los temporizadores de los casos anteriores
+encima, ese evento llega tarde y el caso sale vacío sin que nada esté roto.
+
 Todas las páginas del arnés llevan **la barra lateral de Kick fuera del `<main>`**, con su
 menú y dos canales recomendados. No es decorado: es el sitio del que salió el falso positivo
 del 2026-08-07 —un canal recomendado pintado de verde y metido en el panel como campaña

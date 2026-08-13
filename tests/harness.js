@@ -65,7 +65,7 @@ function page({ url, panels }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -82,7 +82,22 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
     w.GM_setValue = (k, v) => store.set(k, v);
     w.GM_deleteValue = k => store.delete(k);
     w.GM_notification = () => { };
-    w.GM_xmlhttpRequest = () => { };
+    // GM_xmlhttpRequest responde SOLO al endpoint de retos, y es a proposito: es el unico
+    // que el script pide por esta via cuando necesita refrescarlo —el relevo de ventana de
+    // las 18:00—. Implementarlo tambien para /drops/progress cambiaria el camino de los
+    // tests de reclamados, que hoy entran por el interceptor de fetch.
+    //
+    // Devuelve `challengesRefetch` si el test lo da: por aqui solo se pasa cuando el reto
+    // guardado ya no vale, asi que servir el mismo de antes no probaria nada.
+    w.GM_xmlhttpRequest = (opts) => {
+        const u = String((opts && opts.url) || '');
+        if (!u.includes('/api/v1/gamification/challenges')) return;
+        const payload = challengesRefetch || challenges;
+        setTimeout(() => {
+            if (!payload) { if (opts.onerror) opts.onerror(new Error('sin datos')); return; }
+            if (opts.onload) opts.onload({ status: 200, responseText: JSON.stringify({ data: payload }) });
+        }, 10);
+    };
     // Se cuentan los pitidos. Hace falta para poder distinguir "suena" de "suena en
     // bucle": el aviso de drops repite cada 5 s y el de la racha tiene que sonar UNA vez,
     // y sin contarlos las dos cosas se ven igual.
@@ -143,6 +158,27 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
         configurable: true
     });
 
+    // ARRANCAR EL SCRIPT UNA SOLA VEZ, y de forma determinista.
+    //
+    // TODO el script vive dentro de un `addEventListener("load", ...)`. jsdom lanza su
+    // propio `load`, asi que el arnes tenia dos fuentes para el mismo evento y el script
+    // arrancaba DOS VECES, con dos juegos completos de variables. No se notaba —el panel
+    // no se duplica, porque se busca por id— hasta que un contador propio de cada arranque
+    // (los pitidos de la racha) empezo a contar el doble.
+    //
+    // Quitar el sintetico y esperar al de jsdom tampoco vale: cuando el bucle de eventos
+    // lleva encima los temporizadores de los casos anteriores, ese `load` puede llegar
+    // despues de que el test ya haya mirado, y entonces el caso sale vacio sin que nada
+    // este roto. Se vio corriendo los 13 seguidos: el primero pasaba y el resto no.
+    //
+    // Asi que se espera a que jsdom TERMINE de cargar —con nadie escuchando todavia—, y
+    // solo entonces se evalua el script y se dispara un unico `load`. El orden lo decide
+    // el arnes y no el bucle de eventos.
+    await new Promise(res => {
+        if (w.document.readyState === 'complete') return res();
+        w.addEventListener('load', () => res(), { once: true });
+    });
+
     try { w.eval(SCRIPT); } catch (e) { logs.push('THROW en eval: ' + e.stack); }
     // La propia pagina de Kick pide /drops/progress con su Bearer; asi es como el
     // script se enterra de lo reclamado. Se reproduce ese fetch para ejercitar el
@@ -160,6 +196,8 @@ function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null,
             { headers: { Authorization: 'Bearer test' } });
     }
     w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
+    // El unico `load` que ve el script (ver el comentario largo de arriba): el de jsdom
+    // ya paso mientras nadie escuchaba.
     w.dispatchEvent(new w.Event('load'));
 
     if (lateHtml) {

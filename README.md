@@ -97,6 +97,8 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 **Daily reward streak**
 - Kick gives one chest a day for watching 60 minutes, and chaining days builds a streak. When the day is running and you have not watched enough yet, the panel says so: **how many minutes you have of the ones you need**, with the ✕ silencing it until tomorrow.
 - It only warns about what nobody else warns you about: **the part before you can claim**. Once the chest is ready Kick raises its own toast, and this script claims it for you if automatic claiming is on.
+- **It also reaches you when you are not looking at the panel**: a 🔥 in the browser tab's title and one beep. One, not a loop like the drop alert — that one stops with a click, this one stops when you have watched an hour, so repeating it would be beeping over the stream you just opened to silence it.
+- **At the reset hour it asks again.** Kick's day does not end at midnight: the window closes at a fixed hour (18:00 in UTC−6) and a new challenge opens. A tab left open since the previous day used to go quiet and stay quiet until you reloaded; now it wakes up at that exact moment, fetches the new challenge and starts over, beep included.
 - The state comes from Kick's own daily-challenge endpoint, not from the page: the chest icon looks identical whether you already claimed today or still owe minutes, so the DOM cannot tell those two apart. The "until tomorrow" of the ✕ follows **Kick's own day window**, not your clock.
 
 **Language:** 16 languages — Spanish, English, German, French, Portuguese, Russian, Turkish, Japanese, Korean, Polish, Finnish, Vietnamese, Chinese, Arabic, Hindi and Indonesian — following the language Kick serves the page in, falling back to English.
@@ -180,6 +182,8 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 **Racha de la recompensa diaria**
 - Kick regala un cofre al día por ver 60 minutos, y encadenar días da racha. Cuando el día va corriendo y todavía no has visto lo suficiente, el panel lo dice: **cuántos minutos llevas de los que hacen falta**, con una ✕ que lo calla hasta mañana.
 - Solo avisa de lo que no avisa nadie más: **lo de antes de poder reclamar**. En cuanto el cofre está listo, Kick saca su propio aviso, y este script lo reclama por ti si tienes la reclamación automática activada.
+- **También te llega cuando no estás mirando el panel**: un 🔥 en el título de la pestaña del navegador y un pitido. Uno, no en bucle como el aviso de drops — aquel se calla con un clic y este se calla cuando hayas visto una hora, así que repetirlo sería sonar encima del stream que acabas de abrir para callarlo.
+- **A la hora del reinicio vuelve a preguntar.** El día de Kick no acaba a medianoche: la ventana cierra a una hora fija (las 18:00 en UTC−6) y se abre un reto nuevo. Una pestaña abierta desde la víspera se quedaba callada hasta que recargaras; ahora despierta en ese instante exacto, pide el reto nuevo y empieza de cero, pitido incluido.
 - El estado sale del endpoint de retos diarios de Kick y no de la página: el icono del cofre se ve igual si ya reclamaste hoy que si todavía te faltan minutos, así que desde el DOM esos dos casos no se distinguen. Y el «hasta mañana» de la ✕ sigue **el día tal como lo cuenta Kick**, no el de tu reloj.
 
 **Idioma:** 16 idiomas —español, inglés, alemán, francés, portugués, ruso, turco, japonés, coreano, polaco, finés, vietnamita, chino, árabe, hindi e indonesio—, siguiendo el idioma con el que Kick sirve la página, con inglés como respaldo.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.2.18
+// @version      1.2.19
 // @description  Highlights the Kick drop campaigns matching your keywords on the page, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text to share. Optional auto-claim of finished drops and the daily chest. 16 languages, read-only API.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -18,7 +18,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.2.18";
+    const SCRIPT_VERSION = "1.2.19";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -2532,22 +2532,28 @@
         function _titleState() {
             const notifs = getNotifications();
             const pending = notifs.filter(n => !n.seen && n.changed).length;
-            const racha = !!_dailyReminderState();
+            const estadoRacha = _dailyReminderState();
+            const racha = !!estadoRacha;
             let prefix = '';
             if (pending > 0) prefix += `(${pending})`;
             if (racha) prefix += (prefix ? ' ' : '') + TITLE_MARK_STREAK;
-            return { pending, racha, prefix };
+            return { pending, racha, prefix, ventana: estadoRacha ? estadoRacha.windowKey : null };
         }
 
-        // El beep de la racha suena UNA VEZ por carga de pagina, no en bucle como el de
-        // los drops. El de drops repite cada 5 s porque se apaga en cuanto marcas el aviso
-        // como visto —depende de un clic tuyo—, mientras que este se apaga cuando hayas
-        // visto 60 minutos de stream: en bucle seria un castigo de una hora.
-        let _rachaBeeped = false;
+        // El beep de la racha suena UNA VEZ, no en bucle como el de los drops. El de drops
+        // repite cada 5 s porque se apaga en cuanto marcas el aviso como visto —depende de
+        // un clic tuyo—, mientras que este se apaga cuando hayas visto 60 minutos de
+        // stream: en bucle seria un castigo de una hora, y sonando encima del stream que
+        // acabas de abrir para callarlo.
+        //
+        // Se guarda LA VENTANA que ya pito, no un booleano: asi el dia siguiente vuelve a
+        // sonar sin recargar la pagina. Con un booleano, una pestaña abierta al cruzar la
+        // hora de cierre estrenaba el reto nuevo en silencio.
+        let _rachaBeepedWindow = null;
 
         function updateNotificationTitleAndSound() {
             try {
-                const { pending, racha, prefix } = _titleState();
+                const { pending, racha, prefix, ventana } = _titleState();
 
                 // Update tab badge
                 const tabNotifs = document.getElementById("kick-drops-tab-notifs");
@@ -2563,8 +2569,8 @@
                 // Un solo aviso sonoro por la racha, y solo si de verdad se va a ver la
                 // tira: _dailyReminderState() ya devuelve null si la silenciaste con la ×,
                 // asi que callarla calla tambien el pitido.
-                if (racha && !_rachaBeeped) {
-                    _rachaBeeped = true;
+                if (racha && _rachaBeepedWindow !== ventana) {
+                    _rachaBeepedWindow = ventana;
                     playBeep();
                 }
 
@@ -3306,6 +3312,10 @@
             // saliendo antes por el `return` de abajo la marca se quedaria puesta despues de
             // pulsar la ×.
             updateNotificationTitleAndSound();
+            // Y aqui se (re)arma el relevo, con el reto que haya en memoria y no con
+            // `state`: ese viene a null tambien cuando lo silenciaste con la ×, y entonces
+            // el dia siguiente se quedaria sin despertador.
+            _scheduleWindowRollover(_dailyWatchChallenge());
             if (!state) { el.style.display = 'none'; return; }
             const label = el.querySelector('.kick-daily-reminder-text');
             if (label) {
@@ -3316,6 +3326,51 @@
             }
             el.dataset.window = state.windowKey;
             el.style.display = 'flex';
+        }
+
+        // EL RELEVO DE VENTANA. A la hora de cierre (las 18:00 en UTC−6, ver `ends_at`) el
+        // reto de hoy muere y Kick abre el de mañana. Lo que hay en `_kickChallenges` se
+        // queda viejo, y sin esto la tira se callaba —por el corte de ventana cerrada— y ya
+        // no volvia hasta recargar: o sea que el dia siguiente empezaba sin recordatorio en
+        // cualquier pestaña que llevara abierta desde antes.
+        //
+        // Va con UN temporizador puesto al instante exacto del cierre, no sondeando cada
+        // pocos minutos: la hora la dice la propia API, asi que preguntar en bucle solo
+        // seria ruido para acertar lo que ya sabemos.
+        //
+        // El margen de 5 s es porque el que rota es el servidor: pidiendolo en el mismo
+        // segundo puede contestar todavia con el reto viejo. Si aun asi llega cerrado se
+        // reintenta, espaciado y contado —hasta 5 veces—: sin tope, un servidor que no
+        // rotara nos dejaria pidiendolo cada minuto para siempre.
+        const ROLLOVER_MARGEN_MS = 5000;
+        const ROLLOVER_REINTENTO_MS = 60000;
+        const ROLLOVER_MAX_REINTENTOS = 5;
+        let _rolloverTimer = null;
+        let _rolloverIntentos = 0;
+
+        function _scheduleWindowRollover(challenge) {
+            if (_rolloverTimer) { clearTimeout(_rolloverTimer); _rolloverTimer = null; }
+            const ends = Date.parse((challenge && challenge.window && challenge.window.ends_at) || '');
+            if (!Number.isFinite(ends)) return;
+            const falta = ends - Date.now();
+            let espera;
+            if (falta > 0) {
+                // Ventana viva: se despierta justo cuando cierre.
+                _rolloverIntentos = 0;
+                espera = falta + ROLLOVER_MARGEN_MS;
+            } else {
+                // Ya cerrada y seguimos con ella: el servidor no habia rotado.
+                if (_rolloverIntentos >= ROLLOVER_MAX_REINTENTOS) return;
+                _rolloverIntentos++;
+                espera = ROLLOVER_REINTENTO_MS;
+            }
+            _rolloverTimer = setTimeout(() => {
+                _rolloverTimer = null;
+                // Hay que vaciarlo: _ensureChallenges sale por la puerta de atras si ya
+                // tiene algo guardado, y lo que tiene es justo lo caducado.
+                _kickChallenges = null;
+                _ensureChallenges();
+            }, espera);
         }
 
         // Se pide a mano solo si el interceptor no lo cazo: la pagina pide este endpoint
