@@ -142,6 +142,38 @@ const CASOS = [
         }
     }
 
+    // EL RELEVO DE LAS 18:00. Cuando la ventana cierra, el reto en memoria deja de valer.
+    // Antes el aviso solo se callaba, y en una pestaña abierta desde la víspera el día
+    // nuevo empezaba sin recordatorio hasta que recargaras. Ahora se vuelve a pedir.
+    //
+    // Se monta con una ventana que cierra a los 3 s: el script despierta al cerrar (más 5 s
+    // de margen, porque quien rota es el servidor), pide el reto otra vez y adopta el nuevo.
+    {
+        const cierraEn = ms => new Date(Date.now() + ms).toISOString();
+        const r2 = await run({
+            url: 'https://kick.com/drops/campaigns',
+            panels: [{ hidden: false, html: '' }],
+            challenges: [reto(0, 60, 'in_progress', {
+                window: { starts_at: medianocheUTC(AHORA - DIA), ends_at: cierraEn(3000) }
+            })],
+            challengesRefetch: [reto(0, 60, 'in_progress', {
+                condition: { progress: 5, threshold: 60, type: 'watch_time_minutes' },
+                window: { starts_at: cierraEn(3000), ends_at: medianocheUTC(AHORA + DIA) }
+            })],
+            waitMs: 16000
+        });
+        const texto = r2.racha.texto || '';
+        console.log(JSON.stringify({
+            caso: 'relevo de ventana', visible: r2.racha.visible, texto,
+            titulo: r2.titulo, pitidos: r2.beeps
+        }));
+        if (!r2.racha.visible) fallos.push('tras el relevo el aviso no volvio');
+        if (!texto.includes('5 de 60')) fallos.push(`tras el relevo no adopto el reto nuevo -> "${texto}"`);
+        // Y vuelve a sonar, porque es otro día. Con un booleano en vez de la ventana, el
+        // reto nuevo se estrenaba en silencio.
+        if (r2.beeps !== 2) fallos.push(`tras el relevo pito ${r2.beeps} veces, se esperaban 2`);
+    }
+
     // Y la ×: calla el aviso guardando la VENTANA del reto, no la fecha de hoy.
     const r = await run({
         url: 'https://kick.com/drops/campaigns',
