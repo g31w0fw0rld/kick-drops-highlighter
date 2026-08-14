@@ -101,7 +101,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 - **At the reset hour it asks again.** Kick's day does not end at midnight: the window closes at a fixed hour (18:00 in UTC−6) and a new challenge opens. A tab left open since the previous day used to go quiet and stay quiet until you reloaded; now it wakes up at that exact moment, fetches the new challenge and starts over, beep included.
 - The state comes from Kick's own daily-challenge endpoint, not from the page: the chest icon looks identical whether you already claimed today or still owe minutes, so the DOM cannot tell those two apart. The "until tomorrow" of the ✕ follows **Kick's own day window**, not your clock.
 
-**Language:** 16 languages — Spanish, English, German, French, Portuguese, Russian, Turkish, Japanese, Korean, Polish, Finnish, Vietnamese, Chinese, Arabic, Hindi and Indonesian — following the language Kick serves the page in, falling back to English.
+**Language:** 16 languages — Spanish, English, German, French, Portuguese, Russian, Turkish, Japanese, Korean, Polish, Finnish, Vietnamese, Chinese, Arabic, Hindi and Indonesian — read from `<html lang>`, which is the language Kick serves the page in, then from your browser if the page did not say, falling back to English. Regional variants collapse to their base language, so `pt-BR` reads as Portuguese.
 
 **Install:**
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
@@ -186,7 +186,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 - **A la hora del reinicio vuelve a preguntar.** El día de Kick no acaba a medianoche: la ventana cierra a una hora fija (las 18:00 en UTC−6) y se abre un reto nuevo. Una pestaña abierta desde la víspera se quedaba callada hasta que recargaras; ahora despierta en ese instante exacto, pide el reto nuevo y empieza de cero, pitido incluido.
 - El estado sale del endpoint de retos diarios de Kick y no de la página: el icono del cofre se ve igual si ya reclamaste hoy que si todavía te faltan minutos, así que desde el DOM esos dos casos no se distinguen. Y el «hasta mañana» de la ✕ sigue **el día tal como lo cuenta Kick**, no el de tu reloj.
 
-**Idioma:** 16 idiomas —español, inglés, alemán, francés, portugués, ruso, turco, japonés, coreano, polaco, finés, vietnamita, chino, árabe, hindi e indonesio—, siguiendo el idioma con el que Kick sirve la página, con inglés como respaldo.
+**Idioma:** 16 idiomas —español, inglés, alemán, francés, portugués, ruso, turco, japonés, coreano, polaco, finés, vietnamita, chino, árabe, hindi e indonesio—, leídos del `<html lang>`, que es el idioma con el que Kick sirve la página, y luego del navegador si la página no lo dijera, con inglés como respaldo. Las variantes regionales caen a su idioma base, así que `pt-BR` se lee como portugués.
 
 **Instalación:**
 1. Instala [Tampermonkey](https://www.tampermonkey.net/).
