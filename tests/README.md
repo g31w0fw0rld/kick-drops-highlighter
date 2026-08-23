@@ -56,6 +56,7 @@ pide tiene que salir él mismo.
 | `test-racha-diaria.js` | El recordatorio del cofre diario: sale sin empezar y a medias, calla cumplido / con `status` desconocido / con otro tipo de reto, y la × lo silencia solo hasta mañana |
 | `test-cofre-diario.js` | La tarjeta del cofre diario en la rejilla de reclamados: sus tres caras —lo que falta por ver, el botón de cobrar y la ✓ con el cuándo—, que un `status` desconocido no pinta nada y una ventana cerrada tampoco —**ni cobrada**, que es la de ayer—, que sin la casilla de reclamados no sale (mismo caso, sola diferencia), que mientras se acumula lleva la barra de Kick al pie de la imagen y el aviso con lo que falta —y que al cumplirse no lleva ninguna de las dos—, que el botón **reclama de verdad** —pulsa el cofre, espera su diálogo, pulsa el primario— y deja el modal de Kick abierto, que pulsar la **baldosa** a medias abre ese modal sin reclamar nada, y que al **relevo del día** la baldosa se cambia sola —de la ✓ con la carta de ayer a la barra a cero del reto de hoy— sin recargar |
 | `test-cofre-sin-reclamados.js` | La misma tarjeta en una pestaña de reclamados **vacía** (cero drops cobrados, ni un grupo del que colgarse): que la rejilla se pinta igual con el cofre como única baldosa y esconde el «No claimed campaigns yet» de Kick, y que **sin** cofre no pinta nada ni toca ese cartel |
+| `test-cofre-movil.js` | El cofre cuando Kick lo baja al menú de la cuenta, que en móvil es el único sitio donde está: que la baldosa lo encuentra con el menú abierto, que con el menú **cerrado** —donde la fila no existe— da los dos pasos (avatar, esperar a que React la monte, pulsarla) y acaba con el modal abierto sin cobrar, que el **automático** hace ese mismo camino y cobra cuando el reto está `claimable`, que a medias no toca nada, y que el camino de escritorio sigue igual |
 | `test-rejilla-entre-pestanas.js` | El viaje reclamados → cerradas → reclamados **sin recargar**: que la rejilla no se quede colgando en la pestaña de cerradas, que allí no queden bloques apagados por nosotros, que al volver se vuelva a pintar —una sola—, y que los filtros por juego de Kick se escondan en reclamados y **no** en cerradas |
 | `test-grupo-sin-estudio.js` | El grupo cuyos dos `<p>` traen el contador: su título sale sin estudio, y el gemelo de la API se va **solo si es 1:1** |
 | `test-badges-proximas.js` | Los badges de recompensa en **próximas** —lo que reparte y lo que cuesta— y que ahí NO salga la línea de urgencia; abiertos conserva las dos |
@@ -63,11 +64,24 @@ pide tiene que salir él mismo.
 | `test-tooltip-propio.js` | La caja de aviso del script: sale con su texto, peso 600 solo para los valores, y el `title` se guarda mientras está arriba y vuelve al salir |
 | `test-tooltips-cabecera.js` | Los tres controles que solo son un icono —ℹ️, el chevrón y la ✕ de la racha—: cada uno dice lo suyo, y el del chevrón cambia según si el clic va a contraer o a desplegar |
 
-El cofre de la barra de arriba lo monta **solo** quien lo pide (`cofre: 'disponible' | 'cuenta'`), porque
-no vive en el `<main>` de drops y en los volcados de `docs/` no aparece. Al pulsarlo, el arnés abre un diálogo
-Radix como el de Kick —con su primario de reclamar y su X— y ese diálogo **se cierra de verdad**, por la X y
+El cofre lo monta **solo** quien lo pide, porque no vive en el `<main>` de drops y en los volcados de
+escritorio de `docs/` no aparece. Cuatro variantes, y las diferencias son las que deciden quién puede
+reclamar: `cofre: 'disponible'` (el botón del navbar con el vídeo del CTA, la única señal que mira el
+automático en escritorio), `'cuenta'` (el mismo en cuenta atrás), `'movil'` (no hay botón en la barra: Kick
+baja el cofre a una fila del menú de la cuenta, y aquí el menú ya está **abierto**) y `'movil-cerrado'` (el
+caso de verdad: sólo el avatar, y la fila **no existe en el DOM** hasta pulsarlo). Las dos de móvil montan el
+marcado **real** del volcado —`fixture-menu-movil.html` y `fixture-navbar-account.html`, saneadas de la
+cuenta— y no uno inventado: el menú trae diez filas más y la del cofre no es la primera, así que con un menú
+de dos filas un buscador que se agarrara a la posición pasaría por bueno.
+
+Al pulsar el cofre, el arnés abre un diálogo como el de Kick —con su primario de reclamar y su X—, que en
+móvil es un **drawer de vaul** y no el Radix de escritorio. Y ese diálogo **se cierra de verdad**, por la X y
 por Escape. Eso último no es decorado: «el modal se queda abierto» es la única cosa que separa el reclamo a
 mano del automático, y con un diálogo que no se pudiera cerrar los dos se verían igual.
+
+Los dos gestos van por **delegación** en `document` y con retardo a propósito —120 ms el menú, 150 ms el
+diálogo—, no enganchados al nodo: en móvil la fila no existe cuando se monta la página, y sin ese retardo un
+script que no sondeara pasaría el test igual.
 
 **El script arranca una sola vez, y hay que mantenerlo así.** Todo él vive dentro de un
 `addEventListener("load", …)`, y jsdom lanza su propio `load` además del que disparaba el

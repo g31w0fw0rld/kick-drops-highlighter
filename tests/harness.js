@@ -12,6 +12,8 @@ const SCRIPT = fs.readFileSync(process.env.KICK_SCRIPT ||
     '/Users/usuario/code/scripts/kick-drops-highlighter/kick-drops-highlighter.user.js', 'utf8');
 const HERE = __dirname;
 
+const readFixture = f => fs.readFileSync(path.join(HERE, f), 'utf8');
+
 function page({ url, panels, cofre }) {
     // `panels`: [{ hidden: bool, html }] en orden. Kick deja montadas las
     // pestañas inactivas con display:none !important.
@@ -47,13 +49,30 @@ function page({ url, panels, cofre }) {
       </a>
     </div>`;
 
-    // EL COFRE DE LA BARRA DE ARRIBA, tambien fuera del <main>. Solo lo montan los tests
-    // que lo piden, porque no es del <main> de drops y en los volcados de `docs/` no sale.
-    // Dos variantes, que es la diferencia que decide quien puede reclamar:
-    //   'disponible' el video `reward-available-CTA`, el unico que mira el automatico.
-    //   'cuenta'     en cuenta atras. El automatico se abstiene y el boton de la tarjeta
-    //                NO, que es justo lo que hay que poder distinguir.
-    const barra = !cofre ? '' : `
+    // EL COFRE, QUE NO ESTA EN EL MISMO SITIO SEGUN EL ANCHO. Fuera del <main>, asi que
+    // solo lo montan los tests que lo piden: en los volcados de `docs/` de escritorio no
+    // sale. Cuatro variantes, y las diferencias son las que deciden quien puede reclamar:
+    //   'disponible'    el video `reward-available-CTA` en el boton del navbar. Es la
+    //                   unica señal que mira el automatico en escritorio.
+    //   'cuenta'        el mismo boton en cuenta atras. El automatico se abstiene y el
+    //                   boton de la tarjeta NO, que es justo lo que hay que distinguir.
+    //   'movil'         no hay boton en la barra: Kick baja el cofre a una fila del menu
+    //                   de la cuenta, un <button> pelado —sin aria-haspopup y sin video—
+    //                   con el mismo icono en SVG. Aqui el menu ya esta ABIERTO.
+    //   'movil-cerrado' el caso de verdad, el que se encuentra cualquiera: solo esta el
+    //                   avatar de la barra, y la fila NO EXISTE en el DOM hasta que se
+    //                   pulsa. Verificado en `docs/mobile-mode.mhtml`: con el menu cerrado
+    //                   no hay ni una ocurrencia del icono del cofre.
+    // El marcado de las dos de movil es el del volcado, recortado a `fixture-menu-movil`
+    // y `fixture-navbar-account` y saneado de la cuenta (avatar por defecto). Se usa el
+    // real y no uno a mano porque el menu trae DIEZ filas mas —ajustes, idioma, cerrar
+    // sesion— y la fila del cofre no es la primera: si el buscador se agarrara a la
+    // posicion, con un menu inventado de dos filas no se notaria.
+    const menuMovil = () => readFixture('fixture-menu-movil.html');
+    const avatar = () => `<div class="fixed top-0 flex w-full" id="kick-barra-falsa">${readFixture('fixture-navbar-account.html')}</div>`;
+    const barra = !cofre ? '' :
+        cofre === 'movil' ? avatar() + menuMovil() :
+        cofre === 'movil-cerrado' ? avatar() : `
     <div class="fixed top-0 flex w-full" id="kick-barra-falsa">
       <button aria-haspopup="dialog" aria-label="Daily reward">
         <video src="https://static.kick.com/rewards/${cofre === 'disponible' ? 'reward-available-CTA' : 'reward-countdown'}.webm"></video>
@@ -410,30 +429,66 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
         });
     }
 
-    // Lo que hace Kick cuando se pulsa el cofre: abrir su dialogo Radix con el boton
-    // primario de reclamar dentro. Se reproduce porque la secuencia de reclamo son DOS
-    // clics —el cofre, y luego ese primario— y sin el segundo paso no hay forma de ver si
-    // se llego a reclamar. Tarda 150 ms a proposito: el script sondea esperandolo, y con
-    // el dialogo puesto de golpe ese sondeo no se ejercitaria.
+    // LO QUE HACE KICK CUANDO SE PULSA. Dos gestos, y los dos por DELEGACION en
+    // `document` y no enganchados al nodo: en movil el menu no existe al montar la
+    // pagina, asi que su fila no se puede enganchar todavia.
+    //
+    //   · el AVATAR de la barra monta el menu de la cuenta. Con retardo a proposito
+    //     (120 ms): React no lo pinta en el mismo turno del clic, y preguntar por la
+    //     fila justo despues de pulsar devuelve null siempre. Sin ese retardo el test
+    //     pasaria con un script que no sondeara.
+    //   · el COFRE —el boton del navbar o la fila del menu— abre el modal, con el boton
+    //     primario de reclamar dentro. Se reproduce porque la secuencia de reclamo son
+    //     DOS clics y sin el segundo no hay forma de ver si se llego a reclamar. Tarda
+    //     150 ms por lo mismo.
+    //
+    // En movil el modal NO es el dialogo Radix de escritorio, es un drawer de vaul, y se
+    // monta como tal (`data-vaul-drawer-direction`). Lleva dentro el icono del cofre, que
+    // es como lo reconoce el script sin depender del idioma. Y el menu se queda ABIERTO
+    // debajo, como lo deja Kick.
     if (cofre) {
-        const chest = w.document.querySelector('#kick-barra-falsa button');
-        if (chest) chest.addEventListener('click', () => {
+        const esMovil = cofre === 'movil' || cofre === 'movil-cerrado';
+        const ICONO_COFRE = 'M6 7.33301H8.63965V9.33301L11 10.666L13.333 9.33301V7.33301H16V14.666H6V7.33301Z' +
+            'M15.1201 2.41602L16 3.33301V5.33301H6V3.33301L5.12012 2.41602L4.08008 1.33301H14L15.1201 2.41602Z';
+        w.document.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest && e.target.closest('button');
+            if (!b) return;
+
+            if (b.getAttribute('data-testid') === 'navbar-account') {
+                if (w.document.querySelector('.z-modal')) return;
+                setTimeout(() => {
+                    const cont = w.document.createElement('div');
+                    cont.innerHTML = readFixture('fixture-menu-movil.html');
+                    while (cont.firstChild) w.document.body.appendChild(cont.firstChild);
+                }, 120);
+                return;
+            }
+
+            // El cofre, este donde este. Lo nuestro no cuenta: la baldosa lleva el mismo
+            // cofre como imagen y su boton propio ya tiene su camino.
+            if (b.closest('#kick-drops-panel, #kick-claimed-inventory')) return;
+            const svg = b.querySelector('svg path[d^="M6 7.33301"]');
+            const video = b.querySelector('video[src*="static.kick.com/rewards"]');
+            if (!svg && !video) return;
             if (w.document.querySelector('div[role="dialog"]')) return;
             setTimeout(() => {
                 const dlg = w.document.createElement('div');
                 dlg.setAttribute('role', 'dialog');
                 dlg.setAttribute('data-state', 'open');
-                dlg.innerHTML = '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>' +
+                if (esMovil) dlg.setAttribute('data-vaul-drawer-direction', 'bottom');
+                dlg.innerHTML =
+                    '<svg viewBox="0 0 16 16"><path d="' + ICONO_COFRE + '"></path></svg>' +
+                    '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>' +
                     '<button aria-label="Close reward dialog"><span class="sr-only">Close</span></button>';
                 // El dialogo se CIERRA de verdad, por sus dos vias (la X y Escape). Hace
                 // falta para que «el modal se queda abierto» sea una afirmacion: con un
                 // dialogo que no se puede cerrar, el reclamo a mano y el automatico se
                 // verian igual.
                 dlg.querySelector('button[aria-label^="Close"]').addEventListener('click', () => dlg.remove());
-                w.document.addEventListener('keydown', e => { if (e.key === 'Escape') dlg.remove(); });
+                w.document.addEventListener('keydown', ev => { if (ev.key === 'Escape') dlg.remove(); });
                 w.document.body.appendChild(dlg);
             }, 150);
-        });
+        }, true);
     }
 
     // Pulsa el boton «Reclamar» de la tarjeta del cofre, como haria el usuario.
@@ -790,4 +845,4 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     });
 }
 
-module.exports = { run, readFixture: f => fs.readFileSync(path.join(HERE, f), 'utf8') };
+module.exports = { run, readFixture };

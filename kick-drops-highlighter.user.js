@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
+// @version      1.3.1
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -18,7 +18,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.0";
+    const SCRIPT_VERSION = "1.3.1";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // =============================================
@@ -7624,15 +7624,68 @@
             setTimeout(_checkDailyReward, 1500);
         }
 
+        // El cofre esta en DOS sitios distintos segun el ancho, y no son el mismo nodo:
+        //   - Escritorio: el boton del navbar, con aria-haspopup="dialog" y el <video>
+        //     del CTA cuando la recompensa esta disponible.
+        //   - Movil: una fila del menu de acciones ("Recompensas diarias"), que es un
+        //     <button> pelado —sin aria-haspopup ni video— con el mismo icono en SVG.
+        // Por eso el prefiltro por atributo se cayo: dejaba fuera al de movil, que es
+        // el unico que hay ahi. Lo que reconoce es la FORMA —el path del cofre o el
+        // video de Kick—, que es lo mismo que ya se hacia dentro del bucle y no depende
+        // del idioma: la fila dice "Recompensas diarias" o "Daily rewards" segun toque.
+        //
+        // Se busca por el icono y se sube al boton, en vez de recorrer los botones de
+        // la pagina: en /drops hay mas de cien y esto se llama en cada ciclo.
+        //
+        // Gana el que DE VERDAD se ve, no el primero del DOM: en escritorio el del
+        // navbar —el menu de movil no se pinta— y en movil la fila del menu.
+        //
+        // Y cuando no se ve ninguno hay un segundo desempate, que no sobra: el menu de
+        // movil cerrado puede quedarse montado fuera de pantalla, y bajo jsdom —que no
+        // hace layout— `getClientRects()` devuelve vacio SIEMPRE, tambien para lo que
+        // en un navegador se ve perfectamente. Sin este desempate la funcion seria
+        // indistinguible de "el primero del DOM" en los tests. Manda entonces el del
+        // navbar, que es el unico que lleva `aria-haspopup="dialog"`, y si tampoco esta,
+        // la fila del menu: pulsarla abre el modal igual, aunque no este a la vista.
         function _findDailyRewardButton() {
-            const buttons = document.querySelectorAll('button[aria-haspopup="dialog"]');
-            for (const b of buttons) {
-                if (b.querySelector('video[src*="static.kick.com/rewards"]') ||
-                    b.querySelector('svg path[d^="M6 7.33301"]')) {
-                    return b;
-                }
+            const iconos = document.querySelectorAll(
+                'video[src*="static.kick.com/rewards"], svg path[d^="M6 7.33301"]');
+            let navbar = null, fila = null;
+            for (const icono of iconos) {
+                const b = icono.closest('button');
+                // Nuestra propia baldosa lleva el cofre de Kick como imagen: si algun
+                // dia lo lleva en SVG, este guardia evita que el script se pulse a si
+                // mismo y se quede esperando un dialogo que nadie va a abrir.
+                if (!b || b.closest('#kick-drops-panel, #kick-claimed-inventory')) continue;
+                if (b.getClientRects().length) return b;
+                if (b.getAttribute('aria-haspopup') === 'dialog') navbar = navbar || b;
+                else fila = fila || b;
             }
-            return null;
+            return navbar || fila;
+        }
+
+        // ¿Se puede cobrar la recompensa de hoy?
+        //
+        // En ESCRITORIO lo dice el propio boton: Kick le cambia el icono estatico por el
+        // video `reward-available-CTA`, y esa es la señal mas fiable que hay porque es la
+        // que usa el sitio para pintarlo. Mientras el boton traiga un video de Kick, se
+        // le cree a el y a nadie mas.
+        //
+        // En MOVIL no hay video que preguntar: la fila del menu lleva un SVG fijo, y con
+        // el menu cerrado no hay ni fila. Ahi la señal sale de donde ya la saca la
+        // baldosa, el reto del dia, y se exige el `claimable` de Kick y no "los minutos
+        // ya estan": un falso positivo aqui abre y cierra el modal en las narices del
+        // usuario, y esperar al siguiente ciclo no cuesta nada.
+        function _dailyRewardAvailable(btn) {
+            if (btn && btn.querySelector('video[src*="static.kick.com/rewards"]')) {
+                return !!btn.querySelector('video[src*="reward-available"]');
+            }
+            const c = _dailyWatchChallenge();
+            if (!c || c.status !== 'claimable') return false;
+            // Y no el de ayer: pasada la ventana, lo que queda en memoria es el reto
+            // viejo, y cobrar ahi no cobra nada.
+            const ends = Date.parse((c.window && c.window.ends_at) || '');
+            return !(Number.isFinite(ends) && ends <= Date.now());
         }
 
         function _getOpenRewardDialog() {
@@ -7705,18 +7758,21 @@
             // el mismo al no encontrar dialogo. Se espera al siguiente ciclo.
             if (_getOpenRewardDialog()) return;
 
+            // El boton puede no estar: en movil, con el menu de la cuenta cerrado, la
+            // fila del cofre no existe todavia. Eso NO es "no hay cofre", asi que aqui ya
+            // no se corta: la puerta la decide `_dailyRewardAvailable`, que en ese caso
+            // pregunta al reto del dia en vez de al boton.
             const chestBtn = _findDailyRewardButton();
-            if (!chestBtn) return;
-
-            // Solo actuar si la recompensa esta DISPONIBLE (CTA video presente),
-            // asi no abrimos el modal en cada ciclo mientras esta en cuenta regresiva.
-            if (!chestBtn.querySelector('video[src*="reward-available"]')) return;
+            if (!_dailyRewardAvailable(chestBtn)) return;
 
             _dailyRewardBusy = true;
-            try { chestBtn.click(); } catch (e) { _dailyRewardBusy = false; return; }
+            // Mismo camino que el clic en la baldosa, los dos pasos del movil incluidos.
+            if (!_openDailyRewardModal()) { _dailyRewardBusy = false; return; }
 
             let attempts = 0;
-            const maxAttempts = 12; // ~3s
+            // ~6 s. Eran 3, que bastaban cuando el camino era un solo clic; en movil hay
+            // que sumarle abrir el menu y esperar a que React monte la fila.
+            const maxAttempts = 24;
             const poll = setInterval(() => {
                 attempts++;
                 const dialog = _getOpenRewardDialog();
@@ -7809,11 +7865,50 @@
         //
         // Se separa de _claimDailyRewardNow porque son dos intenciones distintas: aquel
         // pulsa ademas el primario del dialogo, y aqui todavia no se puede cobrar.
+        // El disparador del menu de la cuenta, que en movil es el unico camino al cofre.
+        // Kick lo marca con un data-testid, asi que no hay que adivinarlo por el avatar
+        // ni por el idioma.
+        const KICK_ACCOUNT_BTN = 'button[data-testid="navbar-account"]';
+
+        // Abre el modal del cofre y NO reclama nada.
+        //
+        // En escritorio es un clic. En MOVIL son dos, porque la fila del cofre vive
+        // dentro del menu de la cuenta y con el menu cerrado NO EXISTE en el DOM
+        // —verificado en `docs/mobile-mode.mhtml`: con el menu cerrado no aparece ni el
+        // icono ni el contenedor—. Asi que primero el avatar y, cuando la fila aparece,
+        // la fila. Se sondea porque el menu lo monta React con animacion: preguntar en
+        // el mismo turno del clic devuelve null siempre.
+        //
+        // El menu se queda ABIERTO detras del modal a proposito, que es lo que hace
+        // Kick por su cuenta: en ese mismo volcado el menu y el drawer estan abiertos a
+        // la vez. Cerrarlo por debajo seria inventarse un comportamiento que el sitio no
+        // tiene, y encima con el riesgo de que el Escape se llevara el modal.
         function _openDailyRewardModal() {
             if (_getOpenRewardDialog()) return true;
-            const chestBtn = _findDailyRewardButton();
-            if (!chestBtn) return false;
-            try { chestBtn.click(); } catch (e) { return false; }
+
+            const directo = _findDailyRewardButton();
+            if (directo) {
+                try { directo.click(); } catch (e) { return false; }
+                return true;
+            }
+
+            const cuenta = document.querySelector(KICK_ACCOUNT_BTN);
+            if (!cuenta) return false;
+            try { cuenta.click(); } catch (e) { return false; }
+
+            let intentos = 0;
+            const espera = setInterval(() => {
+                intentos++;
+                const fila = _findDailyRewardButton();
+                if (fila) {
+                    clearInterval(espera);
+                    try { fila.click(); } catch (e) { /* si no se deja, no hay nada que hacer */ }
+                } else if (intentos >= 20) {
+                    // ~2 s. Si el menu no trajo la fila, se deja abierto y se calla: el
+                    // usuario ya lo tiene delante y ahi esta lo que buscaba.
+                    clearInterval(espera);
+                }
+            }, 100);
             return true;
         }
 
