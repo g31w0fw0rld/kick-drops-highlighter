@@ -20,11 +20,23 @@ node test-chips-share.js
 Cada test tarda entre 15 y 30 s: el script espera a que el DOM se asiente y los tiempos
 son reales, no simulados. `waitMs` en cada test es lo que hay que subir si algo sale vacío.
 
+El arnés **cierra la ventana de jsdom** en cuanto tiene el informe. Hace falta para que el
+proceso termine: el script deja intervalos puestos y jsdom los mantiene vivos, así que un
+test que ya imprimió «TODO OK» se quedaba corriendo para siempre. No se veía como un fallo
+sino como lentitud —el 2026-08-22 había catorce procesos de esta sesión a la vez, el más
+viejo de hora y media, peleándose por la CPU con el que se acababa de lanzar—. La
+excepción es `dejarAbierta: true`, para el único informe que trae un gancho **vivo** —la ×
+de la racha, que se pulsa después de recibirlo—: ahí no se puede cerrar, y el test que la
+pide tiene que salir él mismo.
+
 ## Qué cubre cada uno
 
 | Test | Qué vigila |
 |---|---|
-| `test-campaigns.js` | Resaltado verde en `/drops/campaigns`, con su chip y su 🔗 |
+| `test-campaigns.js` | La página con una campaña **abierta** de verdad: verde, título con estudio, la fecha de la tarjeta y no la del párrafo de la pestaña, y la copia oculta sin filtrarse |
+| `test-progreso-campanas.js` | El progreso en la pestaña de campañas: el aviso al apuntar y el modal al pulsar, en los dos tramos; el `title` guardado y devuelto; los chips y la marca ⏳ que sobreviven a que llegue `/drops/progress`; el tramo elegido por NOMBRE y no por cercanía de minutos; y el respaldo que reconstruye el progreso **sin API**, desde la barra |
+| `test-reclamacion-automatica.js` | Que se pulse el botón «Claim» de la tarjeta, y sólo con la casilla marcada: encendida, apagada y **marcada a mitad de sesión** (el fallo del 2026-08-22, que sólo reclamaba al recargar) |
+| `test-ocultar-reclamado.js` | Que la recompensa ya reclamada desaparezca de la página con la casilla marcada, y **sólo esa**: la del mismo fixture sin reclamar se queda (la baldosa pelada es idéntica, así que decidirlo por la forma del DOM fallaría), la casilla apagada no esconde nada, y marcarla a mitad de sesión también esconde |
 | `test-comingsoon.js` | Resaltado azul en `/drops/coming-soon`, y que su 🔗 enlace a **esa** pestaña y no a la de abiertas |
 | `test-api-panel.js` | Las tres secciones llenas desde la API, sin duplicar lo escaneado, y el 🔗 de una próxima compartida **desde abiertas** |
 | `test-panel-vacio.js` | Cuatro rutas sin campañas: el panel no se queda mudo |
@@ -42,6 +54,20 @@ son reales, no simulados. `waitMs` en cada test es lo que hay que subir si algo 
 | `test-fuera-del-dom.js` | Que **solo** se lea dentro del `<main>` de drops: con las tres pestañas vacías, ni la barra lateral en el panel ni una marca fuera |
 | `test-casa-por-la-campana.js` | La campaña que casa por algo que la fila no enseña: se marca, dice por qué, avisa, y no se borra al añadir otra keyword — con el cruce exacto y la negativa mandando |
 | `test-racha-diaria.js` | El recordatorio del cofre diario: sale sin empezar y a medias, calla cumplido / con `status` desconocido / con otro tipo de reto, y la × lo silencia solo hasta mañana |
+| `test-cofre-diario.js` | La tarjeta del cofre diario en la rejilla de reclamados: sus tres caras —lo que falta por ver, el botón de cobrar y la ✓ con el cuándo—, que un `status` desconocido no pinta nada y una ventana cerrada tampoco —**ni cobrada**, que es la de ayer—, que sin la casilla de reclamados no sale (mismo caso, sola diferencia), que mientras se acumula lleva la barra de Kick al pie de la imagen y el aviso con lo que falta —y que al cumplirse no lleva ninguna de las dos—, que el botón **reclama de verdad** —pulsa el cofre, espera su diálogo, pulsa el primario— y deja el modal de Kick abierto, que pulsar la **baldosa** a medias abre ese modal sin reclamar nada, y que al **relevo del día** la baldosa se cambia sola —de la ✓ con la carta de ayer a la barra a cero del reto de hoy— sin recargar |
+| `test-cofre-sin-reclamados.js` | La misma tarjeta en una pestaña de reclamados **vacía** (cero drops cobrados, ni un grupo del que colgarse): que la rejilla se pinta igual con el cofre como única baldosa y esconde el «No claimed campaigns yet» de Kick, y que **sin** cofre no pinta nada ni toca ese cartel |
+| `test-rejilla-entre-pestanas.js` | El viaje reclamados → cerradas → reclamados **sin recargar**: que la rejilla no se quede colgando en la pestaña de cerradas, que allí no queden bloques apagados por nosotros, que al volver se vuelva a pintar —una sola—, y que los filtros por juego de Kick se escondan en reclamados y **no** en cerradas |
+| `test-grupo-sin-estudio.js` | El grupo cuyos dos `<p>` traen el contador: su título sale sin estudio, y el gemelo de la API se va **solo si es 1:1** |
+| `test-badges-proximas.js` | Los badges de recompensa en **próximas** —lo que reparte y lo que cuesta— y que ahí NO salga la línea de urgencia; abiertos conserva las dos |
+| `test-expiradas-reclamadas.js` | La cerrada con todo reclamado se va del panel (la página la tiene en Reclamados); la que aún debe algo se queda, y sin inventario no se esconde nada |
+| `test-tooltip-propio.js` | La caja de aviso del script: sale con su texto, peso 600 solo para los valores, y el `title` se guarda mientras está arriba y vuelve al salir |
+| `test-tooltips-cabecera.js` | Los tres controles que solo son un icono —ℹ️, el chevrón y la ✕ de la racha—: cada uno dice lo suyo, y el del chevrón cambia según si el clic va a contraer o a desplegar |
+
+El cofre de la barra de arriba lo monta **solo** quien lo pide (`cofre: 'disponible' | 'cuenta'`), porque
+no vive en el `<main>` de drops y en los volcados de `docs/` no aparece. Al pulsarlo, el arnés abre un diálogo
+Radix como el de Kick —con su primario de reclamar y su X— y ese diálogo **se cierra de verdad**, por la X y
+por Escape. Eso último no es decorado: «el modal se queda abierto» es la única cosa que separa el reclamo a
+mano del automático, y con un diálogo que no se pudiera cerrar los dos se verían igual.
 
 **El script arranca una sola vez, y hay que mantenerlo así.** Todo él vive dentro de un
 `addEventListener("load", …)`, y jsdom lanza su propio `load` además del que disparaba el
@@ -58,7 +84,39 @@ del 2026-08-07 —un canal recomendado pintado de verde y metido en el panel com
 abierta—, y sin ella el fallo no se puede ver, porque los volcados de `docs/` son solo el
 `<main>`.
 
+`navigateTo` acepta **una lista de pasos**, para poder hacer el viaje de ida y vuelta: hay
+fallos que solo aparecen al volver. Y acepta `reactSwap: true`, que es el modo fiel: en vez de
+vaciar el contenedor con `innerHTML` —lo que se lleva por delante también lo que inyecta el
+script— reproduce lo que hace React, que **reutiliza** los nodos coincidentes y deja donde
+estaban los ajenos. La diferencia no es teórica: con el modo viejo,
+`test-rejilla-entre-pestanas.js` pasaba en verde teniendo el fallo dentro, porque el arnés
+hacía la limpieza que venía a comprobar. Lo que ese modelo **no** reproduce es el
+`display:none` que se queda en un nodo de Kick reutilizado; ahí los nodos son nuevos.
+
+`KICK_SCRIPT=<ruta>` hace que el arnés cargue OTRO fichero. Es para las comprobaciones de
+sensibilidad: correr el mismo test contra una copia sin el arreglo y ver que falla.
+
 ## Los fixtures
+
+`fixture-campaigns-active.html` sale de `docs/dom-campaigns-2026-08.html`, que es el primer
+volcado con una campaña **abierta** en la página rediseñada (PUBG, 2026-08-21). Lleva a
+propósito el párrafo descriptivo de la pestaña —el del `text-neutral-300`— **fuera** del
+grupo y delante de él, tal y como está en la página: es la trampa que documenta
+`_dateRangeOf`, porque ese selector se consulta primero y en el DOM viejo era la fecha.
+
+`fixture-campaigns-progress.html` y `fixture-campaigns-claim.html` salen de los dos volcados
+del 2026-08-22, los primeros con un canal emitiendo: el de PUBG con los dos tramos en curso
+(27% y 13%, «22 min to unlock» / «52 min to unlock») y el mismo con el primero ya completo
+—barra en `data-state="complete"` y su botón `aria-label="Claim … reward"`—. Son el único DOM
+que tiene el par barra-con-progreso + botón de reclamar: hasta ese día no había ninguno.
+
+`fixture-campaigns-after-claim.html` es el tercero de esa tanda, tomado justo después de
+reclamar: la recompensa cobrada se queda como una **baldosa pelada** —imagen, nombre y nada
+más: ni barra, ni botón, ni texto de estado— al lado de la que sigue viva al 67%. Es el DOM
+que prueba que Kick NO retira lo reclamado de la pestaña de campañas, y también el que
+impide el atajo tentador: sin barra no significa reclamado —en `fixture-campaigns-active.html`
+las dos recompensas están igual de peladas por tener el contador a cero—, así que lo único
+que puede decidirlo es `/drops/progress`.
 
 `fixture-claimed-panel.html` y `fixture-group.html` salen de `docs/dom-claimed-2026-08.html`,
 y `fixture-expired-panel.html` de `docs/dom-expired-2026-08.html`: volcados reales de esas

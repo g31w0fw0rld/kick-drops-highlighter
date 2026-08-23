@@ -7,6 +7,9 @@ const { run, readFixture } = require('./harness');
 const group = readFixture('fixture-group.html');
 (async () => {
     const r = await run({
+        // La ventana se queda abierta: este test pulsa el 🔗 (`clickShare`) DESPUES de
+        // recibir el informe, y ese gancho necesita el DOM vivo. Sale a mano al final.
+        dejarAbierta: true,
         url: 'https://kick.com/drops/coming-soon',
         panels: [{ hidden: false, html: group }, { hidden: true, html: group.replace('>Rust</h2>', '>GTA</h2>') }]
     });

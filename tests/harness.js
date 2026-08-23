@@ -5,11 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
-const SCRIPT = fs.readFileSync(
+// `KICK_SCRIPT` apunta a OTRO fichero. Es para las comprobaciones de sensibilidad:
+// correr el mismo test contra una copia sin el arreglo y ver que falla. Sin eso, un
+// test nuevo puede estar en verde por no comprobar nada.
+const SCRIPT = fs.readFileSync(process.env.KICK_SCRIPT ||
     '/Users/usuario/code/scripts/kick-drops-highlighter/kick-drops-highlighter.user.js', 'utf8');
 const HERE = __dirname;
 
-function page({ url, panels }) {
+function page({ url, panels, cofre }) {
     // `panels`: [{ hidden: bool, html }] en orden. Kick deja montadas las
     // pestañas inactivas con display:none !important.
     const body = panels.map(p =>
@@ -44,7 +47,21 @@ function page({ url, panels }) {
       </a>
     </div>`;
 
+    // EL COFRE DE LA BARRA DE ARRIBA, tambien fuera del <main>. Solo lo montan los tests
+    // que lo piden, porque no es del <main> de drops y en los volcados de `docs/` no sale.
+    // Dos variantes, que es la diferencia que decide quien puede reclamar:
+    //   'disponible' el video `reward-available-CTA`, el unico que mira el automatico.
+    //   'cuenta'     en cuenta atras. El automatico se abstiene y el boton de la tarjeta
+    //                NO, que es justo lo que hay que poder distinguir.
+    const barra = !cofre ? '' : `
+    <div class="fixed top-0 flex w-full" id="kick-barra-falsa">
+      <button aria-haspopup="dialog" aria-label="Daily reward">
+        <video src="https://static.kick.com/rewards/${cofre === 'disponible' ? 'reward-available-CTA' : 'reward-countdown'}.webm"></video>
+      </button>
+    </div>`;
+
     return `<!doctype html><html lang="es"><head><title>Drops</title></head><body>
+    ${barra}
     ${sidebar}
     <main>
       <div><h2 class="text-white font-bold lg:text-2xl text-2xl">Drops y recompensas</h2>
@@ -65,14 +82,14 @@ function page({ url, panels }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, dejarAbierta = false }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
     vc.on('error', (...a) => logs.push('error: ' + a.join(' ')));
     vc.on('warn', (...a) => logs.push('warn: ' + a.join(' ')));
 
-    const dom = new JSDOM(page({ url, panels }), {
+    const dom = new JSDOM(page({ url, panels, cofre }), {
         url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc
     });
     const w = dom.window;
@@ -145,9 +162,16 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // Los enlaces de pestaña se pulsan de verdad (link.click()); jsdom no navega, asi
     // que se anota el destino para poder comprobar A QUE pestaña te manda.
     const tabClicks = [];
+    // Y los BOTONES pulsados, por su aria-label. Es lo unico con lo que se puede
+    // comprobar la reclamacion automatica: el script pulsa el boton de Kick y en jsdom
+    // eso no tiene ningun efecto visible, asi que sin anotarlo el caso pasa igual
+    // reclamando que sin reclamar.
+    const botonesPulsados = [];
     w.document.addEventListener('click', e => {
         const a = e.target && e.target.closest && e.target.closest('a[href]');
         if (a) tabClicks.push(a.getAttribute('href'));
+        const b = e.target && e.target.closest && e.target.closest('button');
+        if (b) botonesPulsados.push(b.getAttribute('aria-label') || (b.textContent || '').trim());
     }, true);
 
     // jsdom no trae portapapeles. Se captura lo copiado para poder comprobar el
@@ -221,19 +245,84 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             texto: label ? label.textContent : null
         };
     };
+    // La foto lleva el cartel Y el estado de la rejilla de reclamados. Lo segundo es
+    // lo unico con lo que se puede ver un fallo que solo existe A MITAD de camino: la
+    // rejilla colandose en OTRA pestaña vive hasta que se vuelve a reclamados, y para
+    // entonces el informe final ya la ve donde tiene que estar.
+    const foto = () => Object.assign(banner(), {
+        rejillas: w.document.querySelectorAll('#kick-claimed-inventory').length,
+        // Los filtros por juego de Kick (All / Rust / PUBG…). Se cuentan los que se ven,
+        // porque el arreglo es esconderlos SOLO en reclamados: en cerradas siguen
+        // sirviendo y tienen que quedarse.
+        filtros: Array.from(w.document.querySelectorAll('main [role="group"]'))
+            .filter(g => g.querySelector('[role="radio"]'))
+            .filter(g => {
+                for (let e = g; e && e !== w.document.body; e = e.parentElement) {
+                    if (e.style && e.style.display === 'none') return false;
+                }
+                return true;
+            }).length,
+        // El `display` inline de cada grupo de Kick, en orden. Es la huella de lo que
+        // escondimos nosotros, y lo que dice si una pestaña se quedo en blanco.
+        grupos: Array.from(w.document.querySelectorAll('.bg-surface-base.rounded-2xl'))
+            .map(n => n.style.display || ''),
+        ruta: w.location.pathname
+    });
     for (const [nombre, ms] of Object.entries(snapAt)) {
-        setTimeout(() => { snaps[nombre] = banner(); }, ms);
+        setTimeout(() => { snaps[nombre] = foto(); }, ms);
     }
 
     // Cambia de pestaña SIN recargar, que es lo que hace Kick: pushState + el DOM nuevo
     // en su sitio. Es la unica forma de probar lo que solo se rompe navegando; entrando
     // por la URL directa el arranque hace lo correcto y tapa el fallo.
+    //
+    // Acepta un paso o una lista de pasos, para poder hacer el viaje de ida y vuelta:
+    // hay fallos que solo aparecen al VOLVER, y con un solo salto no se ven.
+    //
+    // `reactSwap` es la diferencia importante. Con `innerHTML` se borra el contenedor
+    // entero, y eso se lleva por delante tambien lo que inyecta el script, asi que el
+    // arnes limpiaba solito el desorden que venia a buscar. React no hace eso: solo
+    // reemplaza LOS HIJOS QUE MONTO EL, y los ajenos se quedan donde estaban. De ahi el
+    // fallo del 2026-08-22 —la rejilla de reclamados colgando bajo el contenido de
+    // cerradas—, que con el modo viejo pasaba en verde.
     if (navigateTo) {
-        setTimeout(() => {
-            const host = w.document.querySelector('.flex.flex-col.gap-5');
-            if (host) host.innerHTML = navigateTo.html || '';
-            w.history.pushState({}, '', navigateTo.url);
-        }, navigateTo.at || 6000);
+        const pasos = Array.isArray(navigateTo) ? navigateTo : [navigateTo];
+        pasos.forEach((paso, i) => {
+            setTimeout(() => {
+                const host = w.document.querySelector('.flex.flex-col.gap-5');
+                if (host) {
+                    if (paso.reactSwap) {
+                        // El modelo: React REUTILIZA los nodos que coinciden en tipo y
+                        // posicion, asi que los envoltorios de Kick sobreviven al cambio
+                        // de pestaña y lo que hayamos inyectado dentro de uno se queda
+                        // con el. Se reproduce sacando lo nuestro, cambiando el contenido
+                        // de Kick y volviendo a colgarlo.
+                        //
+                        // Es un MODELO y no una grabacion: borrar el envoltorio —el
+                        // primer intento— hacia el trabajo de limpieza que se venia a
+                        // comprobar, y el test pasaba igual con el fallo dentro. Lo que
+                        // NO reproduce es el `display:none` que se queda en un nodo de
+                        // Kick reutilizado; aqui esos nodos son nuevos.
+                        const mios = Array.from(host.querySelectorAll('[id^="kick-"]'));
+                        host.innerHTML = paso.html || '';
+                        mios.forEach(n => host.appendChild(n));
+                    } else {
+                        host.innerHTML = paso.html || '';
+                    }
+                }
+                // La barra de pestañas se mueve con el contenido, que es lo que hace
+                // Kick: el subrayado no espera a la URL. Sin esto no se puede ejercitar
+                // la comprobacion que mira la barra ademas de la ruta.
+                for (const a of w.document.querySelectorAll('main a[href^="/drops/"]')) {
+                    if (a.getAttribute('href') === paso.url.replace(/^https?:\/\/[^/]+/, '')) {
+                        a.setAttribute('data-state', 'active');
+                    } else {
+                        a.removeAttribute('data-state');
+                    }
+                }
+                w.history.pushState({}, '', paso.url);
+            }, paso.at || (6000 + i * 6000));
+        });
     }
 
     // Pulsa VARIAS tarjetas por su titulo, una detras de otra. Hace falta para poder
@@ -278,6 +367,129 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     }
 
     // Pulsa una tarjeta del panel como lo haria el usuario, ya con todo pintado.
+    // ---------------------------------------------
+    // APUNTAR A UN CONTROL Y MIRAR SU AVISO
+    // ---------------------------------------------
+    // La caja del script tiene un cuarto de segundo de retardo a proposito, asi que
+    // no se lee en el mismo tick que el mouseover. Y se cierra ENTRANDO EN OTRO
+    // elemento sin aviso, que es como lo hace el motor (no usa mouseout), asi el test
+    // recorre el mismo camino que un raton de verdad.
+    //
+    // Lo que se mira de cada caso es lo observable: si la caja se ve, con que texto y
+    // con que peso, y que el `title` del control se guarde mientras esta arriba y
+    // vuelva al salir — porque ese atributo es el respaldo y el nombre accesible.
+    const tip = { casos: [] };
+    if (hover) {
+        const sels = hover.sels || [hover.sel];
+        sels.forEach((sel, i) => {
+            setTimeout(() => {
+                const el = w.document.querySelector(sel);
+                if (!el) { tip.casos.push({ sel, error: 'no existe' }); return; }
+                el.dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
+                setTimeout(() => {
+                    const box = w.document.getElementById('kick-drops-tip');
+                    const caso = {
+                        sel,
+                        visible: !!box && box.style.opacity === '1',
+                        texto: box ? box.textContent.replace(/\s+/g, ' ').trim() : null,
+                        peso: box ? box.style.fontWeight : null,
+                        anclada: box ? { left: box.style.left, top: box.style.top } : null,
+                        tituloMientras: el.getAttribute('title'),
+                        guardado: el.getAttribute('data-kick-tip')
+                    };
+                    // Salir del control: el <body> no lleva aviso, asi que cierra.
+                    w.document.body.dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true }));
+                    setTimeout(() => {
+                        caso.visibleDespues = !!box && box.style.opacity === '1';
+                        caso.tituloDespues = el.getAttribute('title');
+                        caso.guardadoDespues = el.getAttribute('data-kick-tip');
+                        tip.casos.push(caso);
+                    }, 60);
+                }, 400);
+            }, (hover.at || 12000) + i * 800);
+        });
+    }
+
+    // Lo que hace Kick cuando se pulsa el cofre: abrir su dialogo Radix con el boton
+    // primario de reclamar dentro. Se reproduce porque la secuencia de reclamo son DOS
+    // clics —el cofre, y luego ese primario— y sin el segundo paso no hay forma de ver si
+    // se llego a reclamar. Tarda 150 ms a proposito: el script sondea esperandolo, y con
+    // el dialogo puesto de golpe ese sondeo no se ejercitaria.
+    if (cofre) {
+        const chest = w.document.querySelector('#kick-barra-falsa button');
+        if (chest) chest.addEventListener('click', () => {
+            if (w.document.querySelector('div[role="dialog"]')) return;
+            setTimeout(() => {
+                const dlg = w.document.createElement('div');
+                dlg.setAttribute('role', 'dialog');
+                dlg.setAttribute('data-state', 'open');
+                dlg.innerHTML = '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>' +
+                    '<button aria-label="Close reward dialog"><span class="sr-only">Close</span></button>';
+                // El dialogo se CIERRA de verdad, por sus dos vias (la X y Escape). Hace
+                // falta para que «el modal se queda abierto» sea una afirmacion: con un
+                // dialogo que no se puede cerrar, el reclamo a mano y el automatico se
+                // verian igual.
+                dlg.querySelector('button[aria-label^="Close"]').addEventListener('click', () => dlg.remove());
+                w.document.addEventListener('keydown', e => { if (e.key === 'Escape') dlg.remove(); });
+                w.document.body.appendChild(dlg);
+            }, 150);
+        });
+    }
+
+    // Pulsa el boton «Reclamar» de la tarjeta del cofre, como haria el usuario.
+    if (clickCofre) {
+        setTimeout(() => {
+            const b = w.document.querySelector('#kick-daily-chest-card button');
+            if (b) b.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        }, clickCofre.at || 10000);
+    }
+
+    // Pulsa la BALDOSA del cofre —no su boton— como haria el usuario al hacer clic en
+    // ella mientras todavia se acumula. Es otro gesto que el de arriba: aquel cobra y
+    // este solo abre el modal.
+    if (clickTarjetaCofre) {
+        setTimeout(() => {
+            const c = w.document.getElementById('kick-daily-chest-card');
+            if (c) c.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        }, clickTarjetaCofre.at || 10000);
+    }
+
+    // Marca (o desmarca) una casilla del panel a mitad de sesion, como haria el usuario.
+    // `el.click()` y no un `change` sintetico: en jsdom el click de un checkbox cambia
+    // `checked` y dispara `change` el solo, que es exactamente el camino del navegador.
+    if (casilla) {
+        setTimeout(() => {
+            const el = w.document.getElementById(casilla.id || 'cb-hide-expired');
+            if (el) el.click();
+        }, casilla.at || 10000);
+    }
+
+    // Un clic sobre un <li> de recompensa de Kick abre el modal de progreso del script.
+    // Se dispara un MouseEvent de verdad y no `el.onclick`, porque el manejador se engancha
+    // con addEventListener y ademas mira `e.target.closest('a, button, input')`: un evento
+    // sintetico sin target real se saldria por ahi.
+    //
+    // El modal no tiene id —lo monta createKickModal a pelo—, asi que se reconoce por lo
+    // que si es estable: hijo directo de <body>, sin id (la caja del tooltip si lo tiene) y
+    // con el z-index que le pone el script.
+    const modal = { abierto: false };
+    if (clickDrop) {
+        setTimeout(() => {
+            const el = w.document.querySelector(clickDrop.sel);
+            if (!el) { modal.error = 'no existe: ' + clickDrop.sel; return; }
+            el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+            setTimeout(() => {
+                const ov = Array.from(w.document.body.children).find(nodo =>
+                    nodo.tagName === 'DIV' && !nodo.id && nodo.style && nodo.style.zIndex === '999999');
+                modal.abierto = !!ov;
+                if (ov) {
+                    modal.texto = (ov.textContent || '').replace(/\s+/g, ' ').trim();
+                    modal.imagenes = ov.querySelectorAll('img').length;
+                }
+            }, 250);
+        }, clickDrop.at || 13000);
+    }
+
     if (clickPaneCard) {
         setTimeout(() => {
             const card = w.document.querySelector(
@@ -305,6 +517,22 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     return {
                         title: c.getAttribute('data-notif-title'),
                         text: c.textContent.replace(/\s+/g, ' ').trim().slice(0, 160),
+                        // La ventana de fechas. Se lee aparte del texto porque hay DOS
+                        // formatos y no significan lo mismo: el del DOM lleva la hora
+                        // («21 ago 2026, 4:00 - …») y el que compone la API no («21 ago
+                        // 2026 - …»), asi que esto tambien dice de que fuente salio la
+                        // tarjeta. Es el tercer hijo de la cabecera, detras del titulo y
+                        // del estudio; sin fecha no existe, y entonces vale ''.
+                        fecha: (() => {
+                            // Se busca la HOJA que parece una fecha, no una posicion: la
+                            // cabecera de la tarjeta mete la imagen y los iconos como
+                            // hermanos del bloque de texto, asi que contar hijos rompe en
+                            // cuanto falta la imagen o sobra un 🔔.
+                            const f = Array.from(c.querySelectorAll('div'))
+                                .filter(d => d.children.length === 0)
+                                .find(d => /\d{1,2}\s+\S+\s+\d{4}|\d{4}-\d{2}-\d{2}/.test(d.textContent || ''));
+                            return f ? f.textContent.replace(/\s+/g, ' ').trim() : '';
+                        })(),
                         // Las etiquetas de keyword no llevan marca propia en el DOM, asi
                         // que se localizan por su forma. El badge de recompensas se pinta
                         // con el MISMO redondeo y tamaño, y se distingue porque siempre
@@ -312,6 +540,19 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                         // de keyword nunca lo lleva.
                         chips: Array.from(c.querySelectorAll('span[style*="border-radius: 8px"]:not([title])'))
                             .map(s => s.textContent),
+                        // Y los badges de recompensa son los del MISMO redondeo que SI
+                        // llevan `title`. Se leen aparte de las etiquetas porque dicen
+                        // otra cosa: la etiqueta explica por que la tarjeta esta ahi, el
+                        // badge dice que reparte la campaña y cuanto pide cada tramo.
+                        badges: Array.from(c.querySelectorAll('span[style*="border-radius: 8px"][title]'))
+                            .map(s => s.textContent.replace(/\s+/g, ' ').trim()),
+                        // La linea de urgencia, para poder comprobar que NO sale donde no
+                        // debe: en una campaña que todavia no ha abierto, «cierra en …»
+                        // seria una prisa inventada.
+                        urgencia: (() => {
+                            const u = c.querySelector('.drop-urgency');
+                            return u ? u.textContent.replace(/\s+/g, ' ').trim() : null;
+                        })(),
                         share: !!shareBtn,
                         shareText: shareBtn ? shareBtn.title : null,
                         // Pulsa el 🔗 de ESTA tarjeta y devuelve lo que quedo en el
@@ -353,6 +594,10 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 return {
                     existe: true,
                     visible: el.style.display !== 'none',
+                    // Desde el 2026-08-22 la racha es una fila de la pestaña 🔔 y no una
+                    // tira encima del panel: sin esto, «sale el aviso» y «sale donde el
+                    // usuario va a buscar las alertas» se verian igual.
+                    enAlertas: !!(el.closest && el.closest('#kick-drops-notifs-pane')),
                     texto: label ? label.textContent : null,
                     // Pulsa la × y devuelve lo que quedo guardado, para poder comprobar
                     // que el silencio se ata a la ventana del reto y no a la fecha.
@@ -364,16 +609,25 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                         const x = Array.from(el.querySelectorAll('span'))
                             .find(s => s.textContent === '✕');
                         if (x && x.onclick) x.onclick();
-                        setTimeout(() => res({
-                            visible: el.style.display !== 'none',
-                            guardado: store.get('kick_daily_streak_reminded_window') || null,
-                            titulo: w.document.title
-                        }), 1300);
+                        setTimeout(() => {
+                            // Se vuelve a preguntar por el id en vez de mirar el nodo que
+                            // teniamos: desde que la racha es una fila de la pestaña 🔔, la
+                            // × repinta la pestaña y esa fila se va del documento. El nodo
+                            // guardado queda desprendido y su `display` sigue diciendo
+                            // 'flex', asi que preguntarle a el daba «no se escondio» con el
+                            // aviso ya fuera.
+                            const ahora = d.getElementById('kick-drops-daily-reminder');
+                            res({
+                                visible: !!(ahora && ahora.style.display !== 'none'),
+                                guardado: store.get('kick_daily_streak_reminded_window') || null,
+                                titulo: w.document.title
+                            });
+                        }, 1300);
                     })
                 };
             })();
 
-            resolve({
+            const informe = {
                 logs,
                 snaps,
                 // Para diagnosticar los ganchos que pulsan cosas: que botones hay de
@@ -382,6 +636,8 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     .map(b => (b.textContent || '').trim()).filter(Boolean).slice(0, 20),
                 inputsEnPagina: d.querySelectorAll('input[type="text"]').length,
                 racha,
+                tip,
+                modal,
                 beeps: beeps.length,
                 titulo: d.title,
                 fueraDelMain,
@@ -389,6 +645,7 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 scrolls,
                 scrollDetalles,
                 tabClicks,
+                botonesPulsados,
                 paneles: d.querySelectorAll("#kick-drops-panel").length,
                 stored: Object.fromEntries(store),
                 matches,
@@ -396,14 +653,103 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 tabLabels: {
                     active: tabLabel('active'),
                     upcoming: tabLabel('upcoming'),
-                    expired: tabLabel('expired')
+                    expired: tabLabel('expired'),
+                    // La solapa de alertas cuenta ahora tambien la racha del dia.
+                    notifs: tabLabel('notifs')
                 },
                 active: paneCards('active'),
                 upcoming: paneCards('upcoming'),
                 expired: paneCards('expired'),
                 pageMarks: Array.from(d.querySelectorAll('.kick-drop-page-mark')).map(e => e.textContent),
+                // Las baldosas de recompensa de la pagina y si se ven. Es lo unico que
+                // dice si el «ocultar completados» hizo algo: esconder una baldosa no
+                // deja ninguna otra huella. Se mira la cadena de padres porque tambien
+                // se puede esconder la tarjeta de sub-campaña entera cuando se queda sin
+                // ninguna baldosa a la vista.
+                // Los encabezados de la pagina y si se ven. Distingue lo que se esconde de
+                // lo que se queda: con todas las baldosas fuera desaparece «Available
+                // rewards» —su titulo y su fila— pero el nombre del juego y el de la
+                // sub-campaña siguen ahi, que es lo que se decidio el 2026-08-22.
+                encabezados: Array.from(d.querySelectorAll('main h2')).map(h => {
+                    let visible = true;
+                    for (let e = h; e && e !== d.body; e = e.parentElement) {
+                        if (e.style && e.style.display === 'none') { visible = false; break; }
+                    }
+                    return { texto: (h.textContent || '').replace(/\s+/g, ' ').trim(), visible };
+                }),
+                recompensas: Array.from(d.querySelectorAll('main li')).map(li => {
+                    const n = li.querySelector('span.line-clamp-3, [class*="font-bold"]');
+                    let visible = true;
+                    for (let e = li; e && e !== d.body; e = e.parentElement) {
+                        if (e.style && e.style.display === 'none') { visible = false; break; }
+                    }
+                    return {
+                        nombre: n ? (n.textContent || '').replace(/\s+/g, ' ').trim() : '',
+                        visible
+                    };
+                }),
                 hideButtons: d.querySelectorAll('button[data-kick-injected], button[data-kickinjected]').length,
                 xButtons: Array.from(d.querySelectorAll('button')).filter(b => b.textContent === '❌').length,
+                // La tarjeta del cofre diario. Se leen sus cuatro huecos por posicion y no
+                // por clase, que las clases son de Tailwind y se repiten: hijos de la
+                // tarjeta = [imagen, info, separador, pie], e info = [fila de arriba,
+                // nombre]. `pie` dice CUAL de los tres estados se pinto, que es lo unico
+                // que distingue «falta un rato» de «ya se puede» de «ya esta».
+                cofre: (() => {
+                    const card = d.getElementById('kick-daily-chest-card');
+                    if (!card) return null;
+                    const info = card.children[1];
+                    const fila = info.children[0];
+                    const pie = card.children[3];
+                    const img = card.querySelector('img');
+                    return {
+                        izquierda: (fila.children[0].textContent || '').trim(),
+                        contador: (fila.children[1].textContent || '').trim(),
+                        nombre: (info.children[1].textContent || '').trim(),
+                        pie: pie.querySelector('button') ? 'boton'
+                            : (pie.querySelector('svg') ? 'check' : 'nota'),
+                        pieTexto: (pie.textContent || '').replace(/\s+/g, ' ').trim(),
+                        // El cofre incrustado se distingue de la carta que toco: la
+                        // primera es un data: URI y la segunda una URL del CDN.
+                        imagen: /^data:image/.test(img.getAttribute('src') || '') ? 'cofre' : (img.getAttribute('src') || ''),
+                        // La barra de progreso. null cuando la baldosa no la lleva, que
+                        // es lo que tiene que pasar en cuanto se puede cobrar.
+                        barra: (() => {
+                            const b = card.querySelector('[role="progressbar"]');
+                            if (!b) return null;
+                            const fill = b.firstElementChild;
+                            return {
+                                valor: b.getAttribute('data-value'),
+                                texto: b.getAttribute('aria-valuetext'),
+                                // Tiene que colgar del recuadro de la imagen, que es de
+                                // donde cuelga en las baldosas de Kick.
+                                enLaImagen: b.parentElement === card.children[0],
+                                relleno: fill ? fill.style.transform : null
+                            };
+                        })(),
+                        // El aviso vive en `title`, salvo mientras la caja esta arriba:
+                        // entonces el motor lo guarda en `data-kick-tip`.
+                        aviso: card.getAttribute('title') || card.getAttribute('data-kick-tip') || null,
+                        clicable: card.style.cursor === 'pointer'
+                    };
+                })(),
+                // Si queda un dialogo de Kick abierto. Es lo que separa el reclamo a mano
+                // del automatico: el automatico cierra el modal y el de la tarjeta lo deja,
+                // que es el resultado que se ha pedido al pulsar.
+                dialogoAbierto: !!d.querySelector('div[role="dialog"][data-state="open"]'),
+                filtrosKickVisibles: Array.from(d.querySelectorAll('main [role="group"]'))
+                    .filter(g => g.querySelector('[role="radio"]'))
+                    .filter(g => { for (let e = g; e && e !== d.body; e = e.parentElement) { if (e.style && e.style.display === 'none') return false; } return true; }).length,
+                // El estado vacio de Kick («No claimed campaigns yet»), que solo esta en
+                // la pestaña cuando no tienes ni un drop cobrado. null = no lo hay.
+                estadoVacioVisible: (() => {
+                    const v = d.querySelector('main [data-testid="empty-state-root"]');
+                    if (!v) return null;
+                    for (let e = v; e && e !== d.body; e = e.parentElement) {
+                        if (e.style && e.style.display === 'none') return false;
+                    }
+                    return true;
+                })(),
                 claimedGrid: !!d.getElementById('kick-claimed-inventory'),
                 claimedGridCards: d.querySelectorAll('#kick-claimed-inventory img').length,
                 hiddenGroups: Array.from(d.querySelectorAll('.bg-surface-base.rounded-2xl'))
@@ -417,7 +763,29 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 })(),
                 visibleClaimedCards: Array.from(d.querySelectorAll('.border-outline-decorative'))
                     .filter(n => { for (let e = n; e && e !== d.body; e = e.parentElement) if (e.style && e.style.display === 'none') return false; return true; }).length
-            });
+            };
+            resolve(informe);
+
+            // Y SE CIERRA LA VENTANA. El informe ya esta hecho —son datos planos, nada
+            // que siga colgando del DOM—, y sin esto el proceso no termina nunca: el
+            // script deja intervalos puestos (el barrido de la rejilla, el relevo de la
+            // ventana del reto) y jsdom los mantiene vivos, asi que un test que imprime
+            // «TODO OK» se queda ahi corriendo. Se veia como lentitud y no como fallo:
+            // el 2026-08-22 habia catorce procesos de tests de esta sesion a la vez,
+            // el mas viejo de hora y media, peleandose por la CPU con el que se acababa
+            // de lanzar. Los tests que llaman a run() varias veces tambien lo agradecen,
+            // que cada caso soltaba su DOM entero al terminar.
+            // `dejarAbierta` es para los informes que traen ganchos VIVOS: cerrar ahi les
+            // quita el DOM y el test revienta con un TypeError, no con un FALLOS. Los
+            // ganchos son exactamente DOS, y conviene tenerlos apuntados porque no se
+            // distinguen del resto del informe mirandolo:
+            //
+            //   racha.cerrar()            pulsa la × del recordatorio.
+            //   <tarjeta>.clickShare()    pulsa el 🔗 de una tarjeta del panel.
+            //
+            // Quien pida `dejarAbierta` se queda con el proceso colgado, asi que tiene que
+            // salir el mismo (`process.exit`).
+            if (!dejarAbierta) { try { dom.window.close(); } catch (e) { /* ya cerrada */ } }
         }, waitMs);
     });
 }

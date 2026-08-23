@@ -34,6 +34,9 @@ const apiCampaigns = [
 
 (async () => {
     const r = await run({
+        // La ventana se queda abierta: este test pulsa el 🔗 (`clickShare`) DESPUES de
+        // recibir el informe, y ese gancho necesita el DOM vivo. Sale a mano al final.
+        dejarAbierta: true,
         url: 'https://kick.com/drops/campaigns',
         panels: [{ route: '/drops/campaigns', hidden: false, html: group }],
         apiCampaigns, waitMs: 14000

@@ -1,6 +1,6 @@
 // Estando YA en la pestaña, cada tarjeta del panel lleva a SU titulo:
 //
-//   · «KICK - 11 expired drops»          -> el titulo del juego
+//   · «KICK»                                -> el titulo del juego
 //   · «Football Drop: Jungle Jersey - KICK» -> el de esa sub-campaña
 //
 // Las dos viven en la misma pagina y una esta DENTRO de la otra, asi que no vale
@@ -36,7 +36,15 @@ const apiCampaigns = [{
         clickPaneCards: {
             pane: 'expired',
             at: 15000,
-            titles: ['KICK - 11 expired drops', 'Football Drop: Jungle Jersey - KICK']
+            // El grupo KICK no tiene estudio —los dos <p> de su cabecera traen el
+            // contador— asi que su tarjeta se llama solo «KICK». Hasta el 2026-08-20
+            // aqui decia «KICK - 11 expired drops», que era el fallo escrito como
+            // dato de entrada del test (ver test-grupo-sin-estudio.js).
+            //
+            // La segunda sigue existiendo a proposito: el grupo KICK tiene ONCE
+            // sub-campañas, asi que la entrada de la API no es un duplicado de la
+            // tarjeta del grupo sino una vista mas fina, y se queda.
+            titles: ['KICK', 'Football Drop: Jungle Jersey - KICK']
         }
     });
 

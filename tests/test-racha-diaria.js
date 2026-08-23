@@ -121,6 +121,22 @@ const CASOS = [
         if (c.espera === 'visible' && !visible) fallos.push(`${c.nombre}: el aviso no salio`);
         if (c.espera === 'oculto' && visible) fallos.push(`${c.nombre}: el aviso salio y no debia`);
 
+        // DÓNDE sale, que es la mitad del asunto desde el 2026-08-22: es una alerta más,
+        // así que vive dentro de la pestaña 🔔 y su solapa la cuenta. Estando la tira
+        // encima del panel decía sin querer que era urgente y que no era una alerta, y el
+        // contador de alertas marcaba (0) con el aviso delante.
+        if (c.espera === 'visible') {
+            if (!r.racha.enAlertas) {
+                fallos.push(`${c.nombre}: el aviso no está en la pestaña de alertas`);
+            }
+            if (r.tabLabels.notifs !== '🔔 (1)') {
+                fallos.push(`${c.nombre}: la solapa de alertas no cuenta la racha -> ` +
+                    `"${r.tabLabels.notifs}" (se esperaba "🔔 (1)")`);
+            }
+        } else if (r.tabLabels.notifs !== '🔔 (0)') {
+            fallos.push(`${c.nombre}: la solapa de alertas cuenta algo sin aviso -> "${r.tabLabels.notifs}"`);
+        }
+
         // El aviso tiene que llegar tambien a quien NO esta mirando la pestaña: marca en
         // el titulo del navegador y un pitido. En estos casos no hay campañas, asi que
         // todo lo que suene o se escriba viene de la racha y de nada mas.
@@ -175,11 +191,16 @@ const CASOS = [
     }
 
     // Y la ×: calla el aviso guardando la VENTANA del reto, no la fecha de hoy.
+    //
+    // `dejarAbierta` porque este caso pulsa la × DESPUES de recibir el informe, y el arnes
+    // cierra jsdom al entregarlo: sin esto el gancho se queda sin DOM al que pulsar. Es el
+    // unico caso de toda la bateria que lo necesita, y por eso este test sale a mano.
     const r = await run({
         url: 'https://kick.com/drops/campaigns',
         panels: [{ hidden: false, html: '' }],
         challenges: [reto(0, 60, 'in_progress')],
-        waitMs: 16000
+        waitMs: 16000,
+        dejarAbierta: true
     });
     const tras = r.racha.existe ? await r.racha.cerrar() : null;
     console.log(JSON.stringify({ caso: 'pulsar la ×', tras }));

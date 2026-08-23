@@ -9,7 +9,12 @@
 //
 // El caso es el del reporte: /drops/campaigns SIN campañas abiertas, que es cuando el
 // escaneo agota sus 10 intentos y se tarda de verdad.
-const { run } = require('./harness');
+//
+// Y un segundo caso, del 2026-08-22: en RECLAMADOS el cartel se quedaba encendido para
+// siempre. Esa pestaña no se escanea —el panel se llena de la API y la rejilla va por su
+// cuenta—, así que la bandera que apaga el cartel no la levantaba nadie: «Buscando...»
+// eterno con el inventario ya pintado detrás.
+const { run, readFixture } = require('./harness');
 
 const dia = 24 * 60 * 60 * 1000;
 const iso = ms => new Date(ms).toISOString();
@@ -48,6 +53,21 @@ const apiCampaigns = [{
     if (m.visible && !/[Bb]uscando|[Ss]earching/.test(m.texto || ''))
         fallos.push('con la API ya dentro el cartel sigue diciendo que lee la API: "' + m.texto + '"');
     if (f.visible) fallos.push('el cartel se queda puesto despues de terminar');
+
+    // --- Reclamados: el cartel tiene que irse igual --------------------------------
+    const rc = await run({
+        url: 'https://kick.com/drops/claimed',
+        panels: [{ hidden: false, html: readFixture('fixture-claimed-panel.html') }],
+        apiCampaigns, waitMs: 14000,
+        seed: { kick_drop_keywords: JSON.stringify(['rust']) }
+    });
+
+    console.log(JSON.stringify({ enReclamados: rc.banner }, null, 2));
+
+    if (rc.banner && rc.banner.visible) {
+        fallos.push('en reclamados el cartel se queda encendido para siempre: "' +
+            (rc.banner.texto || '') + '"');
+    }
 
     console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
     process.exit(0);
