@@ -639,45 +639,45 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     }));
             })();
 
-            // La tira del recordatorio de racha: si se ve y con que texto. El texto
-            // importa tanto como la visibilidad —los numeros salen de la API y una
-            // sustitucion mal hecha deja el «{done}» a la vista—.
+            // EL AVISO DEL RETO DEL DIA. Desde el 2026-08-27 ya no es una tira propia
+            // encima del panel con su ✕: es una fila mas de la pestaña 🔔, con la misma
+            // cuenta, el mismo pitido en bucle y el mismo 👁️ que las de campaña nueva.
+            //
+            // Se busca por `data-notif-kind="daily"` y no por su texto: el texto va
+            // traducido a 16 idiomas y ademas cambia con los minutos vistos, asi que
+            // apuntarlo seria apuntar a la prosa en vez de a la fila.
             const racha = (() => {
-                const el = d.getElementById('kick-drops-daily-reminder');
-                if (!el) return { existe: false };
-                const label = el.querySelector('.kick-daily-reminder-text');
+                const el = d.querySelector('#kick-drops-notifs-pane [data-notif-kind="daily"]');
+                if (!el) return { existe: false, visible: false, enAlertas: false, texto: null };
                 return {
                     existe: true,
-                    visible: el.style.display !== 'none',
-                    // Desde el 2026-08-22 la racha es una fila de la pestaña 🔔 y no una
-                    // tira encima del panel: sin esto, «sale el aviso» y «sale donde el
-                    // usuario va a buscar las alertas» se verian igual.
-                    enAlertas: !!(el.closest && el.closest('#kick-drops-notifs-pane')),
-                    texto: label ? label.textContent : null,
-                    // Pulsa la × y devuelve lo que quedo guardado, para poder comprobar
-                    // que el silencio se ata a la ventana del reto y no a la fecha.
+                    // Existir y verse son ya lo mismo: la fila solo se pinta mientras el
+                    // aviso esta pendiente, y desaparece al marcarla vista.
+                    visible: true,
+                    enAlertas: true,
+                    texto: (el.firstChild && el.firstChild.textContent) || null,
+                    // Pulsa el 👁️ y devuelve como quedo todo. Sustituye a `cerrar()`: la
+                    // × ya no existe, y lo que da por visto el aviso es el mismo boton que
+                    // el de cualquier otra alerta.
                     //
-                    // Espera antes de mirar: la limpieza del titulo va con 1 s de retraso a
-                    // proposito (para no borrar un titulo que la SPA acabe de cambiar), asi
-                    // que leyendolo al instante siempre saldria con la marca todavia puesta.
-                    cerrar: () => new Promise(res => {
-                        const x = Array.from(el.querySelectorAll('span'))
-                            .find(s => s.textContent === '✕');
-                        if (x && x.onclick) x.onclick();
-                        setTimeout(() => {
-                            // Se vuelve a preguntar por el id en vez de mirar el nodo que
-                            // teniamos: desde que la racha es una fila de la pestaña 🔔, la
-                            // × repinta la pestaña y esa fila se va del documento. El nodo
-                            // guardado queda desprendido y su `display` sigue diciendo
-                            // 'flex', asi que preguntarle a el daba «no se escondio» con el
-                            // aviso ya fuera.
-                            const ahora = d.getElementById('kick-drops-daily-reminder');
-                            res({
-                                visible: !!(ahora && ahora.style.display !== 'none'),
-                                guardado: store.get('kick_daily_streak_reminded_window') || null,
-                                titulo: w.document.title
-                            });
-                        }, 1300);
+                    // Espera antes de mirar porque la limpieza del titulo va con 1 s de
+                    // retraso a proposito (para no borrar un titulo que la SPA acabe de
+                    // cambiar): leyendolo al instante saldria siempre con la marca puesta.
+                    marcarVista: () => new Promise(res => {
+                        const ojo = el.querySelector('button');
+                        if (ojo) ojo.click();
+                        setTimeout(() => res({
+                            visible: !!d.querySelector('#kick-drops-notifs-pane [data-notif-kind="daily"]'),
+                            titulo: w.document.title,
+                            solapa: tabLabel('notifs'),
+                            // Las alertas guardadas, para poder comprobar que la del dia
+                            // quedo marcada vista y no borrada: borrarla la haria nacer
+                            // otra vez en la vuelta siguiente.
+                            guardado: (() => {
+                                try { return JSON.parse(store.get('kick_drop_notifications') || '[]'); }
+                                catch (e) { return []; }
+                            })()
+                        }), 1300);
                     })
                 };
             })();
@@ -835,7 +835,7 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             // ganchos son exactamente DOS, y conviene tenerlos apuntados porque no se
             // distinguen del resto del informe mirandolo:
             //
-            //   racha.cerrar()            pulsa la × del recordatorio.
+            //   racha.marcarVista()       pulsa el 👁️ del aviso del reto del dia.
             //   <tarjeta>.clickShare()    pulsa el 🔗 de una tarjeta del panel.
             //
             // Quien pida `dejarAbierta` se queda con el proceso colgado, asi que tiene que

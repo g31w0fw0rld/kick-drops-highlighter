@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.1
+// @version      1.3.2
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
@@ -18,10 +18,10 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.1";
+    const SCRIPT_VERSION = "1.3.2";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
-    // =============================================
+    // ==== =========================================
     // CLAIMED DROPS DATA (shared between interceptor and explicit fetch)
     // =============================================
     let _interceptedClaimedCampaigns = [];
@@ -493,7 +493,6 @@
                 shareCopy: "Copiar para compartir",
                 collapsePanel: "Ocultar el panel",
                 expandPanel: "Mostrar el panel",
-                dismissDailyReminder: "Silenciar hasta mañana",
                 dailyRewardTitle: "Recompensa diaria",
                 dailyRewardAuto: "Se reclama solo al terminar el tiempo",
                 dailyRewardClaim: "Reclamar",
@@ -578,7 +577,6 @@
                 shareCopy: "Copy to share",
                 collapsePanel: "Hide the panel",
                 expandPanel: "Show the panel",
-                dismissDailyReminder: "Mute until tomorrow",
                 dailyRewardTitle: "Daily reward",
                 dailyRewardAuto: "Claimed automatically when the time is up",
                 dailyRewardClaim: "Claim",
@@ -650,7 +648,6 @@
                 shareCopy: "Zum Teilen kopieren",
                 collapsePanel: "Panel ausblenden",
                 expandPanel: "Panel anzeigen",
-                dismissDailyReminder: "Bis morgen stummschalten",
                 dailyRewardTitle: "Tägliche Belohnung",
                 dailyRewardAuto: "Wird automatisch abgeholt, wenn die Zeit um ist",
                 dailyRewardClaim: "Abholen",
@@ -714,7 +711,6 @@
                 shareCopy: "Copier pour partager",
                 collapsePanel: "Masquer le panneau",
                 expandPanel: "Afficher le panneau",
-                dismissDailyReminder: "Masquer jusqu'à demain",
                 dailyRewardTitle: "Récompense quotidienne",
                 dailyRewardAuto: "Réclamée automatiquement à la fin du temps",
                 dailyRewardClaim: "Réclamer",
@@ -778,7 +774,6 @@
                 shareCopy: "Copiar para compartilhar",
                 collapsePanel: "Ocultar o painel",
                 expandPanel: "Mostrar o painel",
-                dismissDailyReminder: "Silenciar até amanhã",
                 dailyRewardTitle: "Recompensa diária",
                 dailyRewardAuto: "É resgatada sozinha ao terminar o tempo",
                 dailyRewardClaim: "Resgatar",
@@ -841,7 +836,6 @@
                 shareCopy: "Скопировать, чтобы поделиться",
                 collapsePanel: "Скрыть панель",
                 expandPanel: "Показать панель",
-                dismissDailyReminder: "Не напоминать до завтра",
                 dailyRewardTitle: "Ежедневная награда",
                 dailyRewardAuto: "Забирается сама, когда время выйдет",
                 dailyRewardClaim: "Забрать",
@@ -905,7 +899,6 @@
                 shareCopy: "Paylaşmak için kopyala",
                 collapsePanel: "Paneli gizle",
                 expandPanel: "Paneli göster",
-                dismissDailyReminder: "Yarına kadar sessize al",
                 dailyRewardTitle: "Günlük ödül",
                 dailyRewardAuto: "Süre dolduğunda kendiliğinden alınır",
                 dailyRewardClaim: "Al",
@@ -969,7 +962,6 @@
                 shareCopy: "共有用にコピー",
                 collapsePanel: "パネルを隠す",
                 expandPanel: "パネルを表示",
-                dismissDailyReminder: "明日まで通知しない",
                 dailyRewardTitle: "デイリー報酬",
                 dailyRewardAuto: "時間が終わると自動で受け取ります",
                 dailyRewardClaim: "受け取る",
@@ -1033,7 +1025,6 @@
                 shareCopy: "공유용으로 복사",
                 collapsePanel: "패널 숨기기",
                 expandPanel: "패널 표시",
-                dismissDailyReminder: "내일까지 알리지 않기",
                 dailyRewardTitle: "일일 보상",
                 dailyRewardAuto: "시간이 끝나면 자동으로 수령합니다",
                 dailyRewardClaim: "수령",
@@ -1097,7 +1088,6 @@
                 shareCopy: "Kopiuj, aby udostępnić",
                 collapsePanel: "Ukryj panel",
                 expandPanel: "Pokaż panel",
-                dismissDailyReminder: "Wycisz do jutra",
                 dailyRewardTitle: "Nagroda dzienna",
                 dailyRewardAuto: "Odbierana sama, gdy czas się skończy",
                 dailyRewardClaim: "Odbierz",
@@ -1161,7 +1151,6 @@
                 shareCopy: "Kopioi jaettavaksi",
                 collapsePanel: "Piilota paneeli",
                 expandPanel: "Näytä paneeli",
-                dismissDailyReminder: "Vaimenna huomiseen",
                 dailyRewardTitle: "Päivittäinen palkinto",
                 dailyRewardAuto: "Lunastetaan itsestään, kun aika täyttyy",
                 dailyRewardClaim: "Lunasta",
@@ -1225,7 +1214,6 @@
                 shareCopy: "Sao chép để chia sẻ",
                 collapsePanel: "Ẩn bảng",
                 expandPanel: "Hiện bảng",
-                dismissDailyReminder: "Tắt đến mai",
                 dailyRewardTitle: "Phần thưởng hằng ngày",
                 dailyRewardAuto: "Tự động nhận khi hết thời gian",
                 dailyRewardClaim: "Nhận",
@@ -1289,7 +1277,6 @@
                 shareCopy: "复制以分享",
                 collapsePanel: "隐藏面板",
                 expandPanel: "显示面板",
-                dismissDailyReminder: "静音至明天",
                 dailyRewardTitle: "每日奖励",
                 dailyRewardAuto: "时间到了会自动领取",
                 dailyRewardClaim: "领取",
@@ -1353,7 +1340,6 @@
                 shareCopy: "انسخ للمشاركة",
                 collapsePanel: "إخفاء اللوحة",
                 expandPanel: "إظهار اللوحة",
-                dismissDailyReminder: "كتم التنبيه حتى الغد",
                 dailyRewardTitle: "المكافأة اليومية",
                 dailyRewardAuto: "تُستلم تلقائيًا عند انتهاء الوقت",
                 dailyRewardClaim: "استلام",
@@ -1417,7 +1403,6 @@
                 shareCopy: "साझा करने के लिए कॉपी करें",
                 collapsePanel: "पैनल छिपाएँ",
                 expandPanel: "पैनल दिखाएँ",
-                dismissDailyReminder: "कल तक चुप कराएँ",
                 dailyRewardTitle: "दैनिक इनाम",
                 dailyRewardAuto: "समय पूरा होने पर अपने-आप उठा लिया जाता है",
                 dailyRewardClaim: "उठाएँ",
@@ -1481,7 +1466,6 @@
                 shareCopy: "Salin untuk dibagikan",
                 collapsePanel: "Sembunyikan panel",
                 expandPanel: "Tampilkan panel",
-                dismissDailyReminder: "Bisukan sampai besok",
                 dailyRewardTitle: "Hadiah harian",
                 dailyRewardAuto: "Diklaim otomatis begitu waktunya habis",
                 dailyRewardClaim: "Klaim",
@@ -2941,6 +2925,11 @@
         // ESTADO LOCAL DE LA APLICACION
         // =============================================
 
+        // La clave con la que la × silenciaba la racha hasta el dia siguiente. Ya no la
+        // lee nadie —el aviso se marca vista como los demas— asi que se borra una vez, en
+        // vez de dejarla ahi para siempre en quien venga de una version anterior.
+        try { GM_deleteValue('kick_daily_streak_reminded_window'); } catch (e) { /* noop */ }
+
         let keywords = getStoredKeywords();
         let cleanExpiredInventoryFlag = GM_getValue(SHOW_HIDE_INVENTORY_EXPIRED, false);
         let _notificationSoundInterval = null;
@@ -2987,11 +2976,6 @@
             }
         }
 
-        // La marca de la racha en el titulo. Un emoji y no un texto a proposito: en el
-        // titulo de la pestaña se ve un icono y como mucho dos palabras, y asi no hay que
-        // traducir nada a los 16 idiomas para algo que casi nunca se lee entero.
-        const TITLE_MARK_STREAK = '🔥';
-
         // EL TITULO SE COMPONE EN UN SOLO SITIO, y tiene que seguir asi. Hay dos cosas que
         // quieren aparecer ahi —los drops pendientes y la racha del dia— y cada una se
         // entera de lo suyo por su cuenta. Escribiendo cada una directamente en
@@ -3004,39 +2988,30 @@
         // pestaña—, y con la cuenta escrita dos veces basta que una se quede sin la racha
         // para que la solapa marque (0) con una alerta dentro.
         //
-        // La racha del dia cuenta como UNA alerta mas: desde el 2026-08-22 vive dentro de
-        // la pestaña 🔔 y no como una tira encima del panel, asi que si no contara, seria
-        // la unica alerta que no aparece en el contador que las cuenta.
+        // La racha del dia ya no se cuenta aparte: desde el 2026-08-27 es una
+        // notificacion mas del almacen (ver _syncDailyNotification), asi que entra sola en
+        // este filtro. La funcion se queda porque la leen dos sitios que tienen que decir
+        // lo MISMO —la etiqueta de la solapa 🔔 y el repintado de su pestaña—, y con la
+        // cuenta escrita dos veces basta que una se desvie para que la solapa marque (0)
+        // con una alerta dentro.
         function _alertCount() {
-            const pending = getNotifications().filter(n => !n.seen && n.changed).length;
-            return pending + (_dailyReminderState() ? 1 : 0);
+            return getNotifications().filter(n => !n.seen && n.changed).length;
         }
 
         function _titleState() {
-            const notifs = getNotifications();
-            const pending = notifs.filter(n => !n.seen && n.changed).length;
-            const estadoRacha = _dailyReminderState();
-            const racha = !!estadoRacha;
-            let prefix = '';
-            if (pending > 0) prefix += `(${pending})`;
-            if (racha) prefix += (prefix ? ' ' : '') + TITLE_MARK_STREAK;
-            return { pending, racha, prefix, ventana: estadoRacha ? estadoRacha.windowKey : null };
+            const pending = _alertCount();
+            return { pending, prefix: pending > 0 ? `(${pending})` : '' };
         }
 
-        // El beep de la racha suena UNA VEZ, no en bucle como el de los drops. El de drops
-        // repite cada 5 s porque se apaga en cuanto marcas el aviso como visto —depende de
-        // un clic tuyo—, mientras que este se apaga cuando hayas visto 60 minutos de
-        // stream: en bucle seria un castigo de una hora, y sonando encima del stream que
-        // acabas de abrir para callarlo.
-        //
-        // Se guarda LA VENTANA que ya pito, no un booleano: asi el dia siguiente vuelve a
-        // sonar sin recargar la pagina. Con un booleano, una pestaña abierta al cruzar la
-        // hora de cierre estrenaba el reto nuevo en silencio.
-        let _rachaBeepedWindow = null;
-
+        // El pitido de la racha ya no es un caso aparte. Sonaba UNA vez —no en bucle como
+        // el de los drops— con el argumento de que se apagaba solo al cumplir los 60
+        // minutos y un bucle seria un castigo de una hora. Pero ahora la alerta se marca
+        // vista con su 👁️ como cualquier otra, asi que el bucle se apaga con un clic y no
+        // con una hora de stream: pedido asi el 2026-08-27, para que suene y se comporte
+        // igual que la de campaña nueva.
         function updateNotificationTitleAndSound() {
             try {
-                const { pending, racha, prefix, ventana } = _titleState();
+                const { pending, prefix } = _titleState();
 
                 // Update tab badge
                 const alertas = _alertCount();
@@ -3046,17 +3021,8 @@
                     tabNotifs.style.color = alertas > 0 ? colors.orange : colors.gray;
                 }
 
-                // El bucle sigue atado SOLO a los drops (ver _rachaBeeped).
                 if (pending > 0) startNotificationSound();
                 else stopNotificationSound();
-
-                // Un solo aviso sonoro por la racha, y solo si de verdad se va a ver la
-                // tira: _dailyReminderState() ya devuelve null si la silenciaste con la ×,
-                // asi que callarla calla tambien el pitido.
-                if (racha && _rachaBeepedWindow !== ventana) {
-                    _rachaBeepedWindow = ventana;
-                    playBeep();
-                }
 
                 // Los dos plazos son los de siempre: rapido para poner la marca —hay que
                 // ganarle al titulo que escribe Kick al montar la pagina— y lento para
@@ -3067,10 +3033,7 @@
                     setTimeout(() => { document.title = `${prefix} ${ORIGINAL_TITLE}`; }, 100);
                 } else {
                     setTimeout(() => {
-                        if (document.title.startsWith('(') ||
-                            document.title.startsWith(TITLE_MARK_STREAK)) {
-                            document.title = ORIGINAL_TITLE;
-                        }
+                        if (document.title.startsWith('(')) document.title = ORIGINAL_TITLE;
                     }, 1000);
                 }
             } catch (e) {
@@ -3136,6 +3099,11 @@
             const notifs = getNotifications();
             const filtered = [];
             for (const n of notifs) {
+                // La del reto del dia no la trae ninguna keyword y no puede irse con
+                // ellas: es del cofre, no de una campaña. Sin esto, tocar la lista
+                // —incluso añadir una keyword que no tiene nada que ver— la borraba, y
+                // volvia a nacer en la siguiente vuelta: un parpadeo sin explicacion.
+                if (n.kind === 'daily') { filtered.push(n); continue; }
                 const title = (n.title || '').toLowerCase();
                 // El aviso puede existir por algo que su TITULO no dice: el filtro de la
                 // API mira tambien el nombre de la campaña. Juzgandolo solo por el titulo,
@@ -3741,7 +3709,6 @@
         // El aviso es una tira dentro del panel, no una notificacion del sistema (ver
         // por que se quitaron, mas arriba). Se va sola en cuanto el reto se completa, y
         // la × la calla hasta el dia siguiente.
-        const DAILY_REMINDER_KEY = 'kick_daily_streak_reminded_window';
 
         // El reto que nos importa de todos los que devuelva la API. Se pide por los tres
         // campos y no por el primero del array: `recurrence` para no coger uno semanal,
@@ -3791,8 +3758,73 @@
             const ends = Date.parse((c.window && c.window.ends_at) || '');
             if (Number.isFinite(ends) && ends <= Date.now()) return null;
             const windowKey = (c.window && c.window.starts_at) || '';
-            if (windowKey && GM_getValue(DAILY_REMINDER_KEY, null) === windowKey) return null;
             return { done, total, windowKey };
+        }
+
+        // LA RACHA ES UNA ALERTA MAS, y desde el 2026-08-27 lo es de verdad: una
+        // notificacion del MISMO almacen que las de campaña nueva, con su misma fila, su
+        // misma cuenta, su mismo pitido en bucle y su mismo 👁️ para marcarla vista. Antes
+        // era una fila aparte con recuadro propio, una × para callarla y un pitido de UNA
+        // vez: tres comportamientos distintos para algo que el panel presenta como una
+        // alerta mas. Lo unico que la sigue distinguiendo es que su 👁️ no lleva a ninguna
+        // parte, porque no hay campaña a la que ir.
+        //
+        // La clave lleva LA VENTANA del reto, y de ahi sale gratis el «se resetea cada
+        // dia»: cerrada la ventana, el reto nuevo trae otra `starts_at`, o sea otra clave,
+        // o sea una alerta nueva que vuelve a sonar aunque ayer la marcaras vista.
+        //
+        // Y se marca sola cuando el reto deja de estar pendiente —lo completaste, lo
+        // cobraste o se cerro la ventana—: seguir sonando con los 60 minutos ya hechos
+        // seria pedirte un clic por algo que ya no puedes perder.
+        const DAILY_NOTIF_PREFIX = 'kick-daily|';
+
+        function _syncDailyNotification() {
+            // SIN DATOS NO SE DECIDE NADA. `_dailyReminderState()` devuelve null tanto
+            // porque el reto ya esta hecho como porque `/challenges` todavia no ha
+            // llegado, y son cosas opuestas: sin esta guarda, cada carga de pagina
+            // marcaba como vista la alerta del dia antes de saber si existia.
+            if (!_kickChallenges) return;
+            const state = _dailyReminderState();
+            const clave = state ? DAILY_NOTIF_PREFIX + state.windowKey : '';
+            const notifs = getNotifications();
+            let cambio = false;
+
+            // Lo que quede de OTRA ventana ya no describe nada de hoy.
+            for (const n of notifs) {
+                if (!n.key || n.key.indexOf(DAILY_NOTIF_PREFIX) !== 0) continue;
+                if (n.key === clave || n.seen) continue;
+                n.seen = true;
+                n.updatedAt = Date.now();
+                cambio = true;
+            }
+
+            if (state) {
+                const texto = (t.dailyStreakReminder || i18n.en.dailyStreakReminder)
+                    .replace('{done}', String(state.done))
+                    .replace('{total}', String(state.total));
+                const ya = notifs.find(n => n.key === clave);
+                if (!ya) {
+                    notifs.push({
+                        id: clave, title: texto, key: clave,
+                        // Marca la fila como la del reto del dia: es lo que lee el 👁️
+                        // para marcarla vista sin intentar navegar a ninguna campaña, y lo
+                        // que la salva de la purga al editar keywords (no casa con
+                        // ninguna, y no tiene por que).
+                        kind: 'daily',
+                        seen: false, changed: true,
+                        createdAt: Date.now(), updatedAt: Date.now()
+                    });
+                    cambio = true;
+                } else if (ya.title !== texto) {
+                    // Los minutos suben mientras ves, asi que el texto se refresca. NO se
+                    // vuelve a poner `seen: false`: refrescar una cifra no es una alerta
+                    // nueva, y hacerlo la volveria a encender cada minuto visto.
+                    ya.title = texto;
+                    cambio = true;
+                }
+            }
+
+            if (cambio) saveNotifications(notifs);
         }
 
         function _updateDailyReminder() {
@@ -3806,6 +3838,7 @@
             // ese viene a null tambien cuando lo silenciaste con la ×, y entonces el dia
             // siguiente se quedaria sin despertador.
             _scheduleWindowRollover(_dailyWatchChallenge());
+            _syncDailyNotification();
             renderNotificationsTab();
             // La tarjeta del cofre vive en la rejilla de reclamados, asi que el mismo dato
             // que mueve la fila de 🔔 tiene que repintarla tambien: sin esto solo aparecia
@@ -3895,44 +3928,6 @@
         // Se construye con el estado ya resuelto en vez de crear el nodo vacio y llenarlo
         // luego: la pestaña se repinta entera en cada cambio, asi que un nodo persistente
         // que hubiera que encender y apagar seria un estado mas que mantener en sincronia.
-        function _dailyReminderRow(state) {
-            const el = document.createElement('div');
-            el.id = 'kick-drops-daily-reminder';
-            Object.assign(el.style, {
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 8px', marginBottom: '4px',
-                backgroundColor: colors.primary + '15',
-                border: `1px solid ${colors.primary}40`,
-                borderRadius: '6px', fontSize: '11px',
-                color: colors.primary
-            });
-            const icon = document.createElement('span');
-            icon.textContent = '🔥';
-            el.appendChild(icon);
-            const text = document.createElement('span');
-            text.className = 'kick-daily-reminder-text';
-            text.style.flex = '1';
-            text.textContent = (t.dailyStreakReminder ||
-                'Daily reward: {done} of {total} min watched. Do not lose your streak today.')
-                .replace('{done}', String(state.done))
-                .replace('{total}', String(state.total));
-            el.appendChild(text);
-            // La × calla el aviso guardando LA VENTANA del reto, no la fecha de hoy: asi
-            // el silencio dura exactamente lo que dura el reto que estabas viendo.
-            el.dataset.window = state.windowKey;
-            const close = document.createElement('span');
-            close.textContent = '✕';
-            close.title = t.dismissDailyReminder || '';
-            Object.assign(close.style, { cursor: 'pointer', opacity: '0.7', padding: '0 2px' });
-            close.onclick = () => {
-                if (state.windowKey) GM_setValue(DAILY_REMINDER_KEY, state.windowKey);
-                // Repintar la pestaña se lleva esta fila y rehace la cuenta y el titulo:
-                // callar el aviso tiene que callarlo entero, tambien el 🔥 del navegador.
-                _updateDailyReminder();
-            };
-            el.appendChild(close);
-            return el;
-        }
 
         function createInventoryCheckboxes(inline = false) {
             const container = document.createElement('div');
@@ -4487,8 +4482,8 @@
             _updateApiLoadingBanner();
             body.appendChild(createInventoryWarning());
             _scheduleInventoryWarning();
-            // El recordatorio de la racha NO se cuelga aqui: es una fila de la pestaña 🔔
-            // (ver _dailyReminderRow), asi que lo pinta renderNotificationsTab.
+            // El aviso del reto del dia NO se cuelga aqui: es una alerta mas del almacen
+            // (ver _syncDailyNotification), asi que lo pinta renderNotificationsTab.
             // Si el interceptor ya lo tenia, se pinta ahora; si llega despues, entra por
             // el callback. Las dos vias acaban en la misma funcion.
             _onChallengesReady = _updateDailyReminder;
@@ -5271,11 +5266,9 @@
 
             const notifs = getNotifications();
             const pending = notifs.filter(n => !n.seen && n.changed);
-            // La racha del dia es una alerta mas de esta pestaña (ver _dailyReminderRow),
-            // asi que entra en la cuenta y en el «no hay nada». La cuenta sale de
-            // _alertCount para que la solapa diga lo mismo desde los dos sitios que la
-            // escriben.
-            const racha = _dailyReminderState();
+            // La racha del dia ya viene DENTRO de `pending`: es una notificacion mas (ver
+            // _syncDailyNotification). La cuenta sale de _alertCount para que la solapa
+            // diga lo mismo desde los dos sitios que la escriben.
             const alertas = _alertCount();
 
             // Update tab label with count
@@ -5295,18 +5288,6 @@
                 emptyMsg.style.textAlign = "center";
                 emptyMsg.style.padding = "12px 0";
                 notifsPane.appendChild(emptyMsg);
-                updateNotificationTitleAndSound();
-                return;
-            }
-
-            // La racha va primera: es lo unico de esta pestaña que caduca hoy.
-            if (racha) notifsPane.appendChild(_dailyReminderRow(racha));
-
-            // Y si la racha era la unica alerta, aqui se acaba: el boton de «marcar todas
-            // como vistas» y las filas de campaña son de las notificaciones, y la racha no
-            // se marca como vista —se calla con su ×— asi que ese boton no tendria nada
-            // que hacer.
-            if (!pending.length) {
                 updateNotificationTitleAndSound();
                 return;
             }
@@ -5332,8 +5313,17 @@
             notifsPane.appendChild(markAllRow);
 
             // Notification rows
-            pending.sort((a, b) => a.title.localeCompare(b.title)).forEach(n => {
+            // La del dia va primera: es lo unico de esta pestaña que caduca hoy. El
+            // resto, por titulo, como siempre.
+            pending.sort((a, b) => {
+                if ((a.kind === 'daily') !== (b.kind === 'daily')) return a.kind === 'daily' ? -1 : 1;
+                return a.title.localeCompare(b.title);
+            }).forEach(n => {
                 const row = document.createElement("div");
+                // QUE CLASE DE AVISO ES. No lo lee el script: lo leen los tests, para
+                // poder senalar la fila del reto del dia por lo que ES y no por su
+                // prosa, que va traducida a 16 idiomas y cambia con los minutos vistos.
+                row.setAttribute("data-notif-kind", n.kind || "campaign");
                 Object.assign(row.style, {
                     display: "flex", alignItems: "center", gap: "8px",
                     padding: "6px 8px", marginBottom: "4px",
@@ -5359,6 +5349,14 @@
                     cursor: "pointer", fontSize: "11px", flexShrink: "0"
                 });
                 viewBtn.onclick = () => {
+                    // La del reto del dia se marca y se acaba: no hay campaña a la que ir
+                    // ni 🔔 que quitar de ninguna tarjeta, asi que todo lo de abajo o no
+                    // aplica o te sacaria de la pagina sin motivo.
+                    if (n.kind === 'daily') {
+                        markNotificationSeen(n.key || n.title);
+                        renderNotificationsTab();
+                        return;
+                    }
                     const notifTitle = n.title;
                     const notifId = (n.key && n.key.includes("|")) ? n.key.split("|")[1] : (n.id || "");
                     markNotificationSeen(n.key || n.title);
@@ -6117,8 +6115,14 @@
         // Un status desconocido no pinta nada, igual que no avisa: uno nuevo —un "perdido"
         // para el dia que se cierra sin cobrar— caeria por descarte en in_progress y la
         // tarjeta prometeria un reclamo automatico que no va a pasar.
+        //
+        // Y NO depende de la casilla. Dependia, y con motivo: la cara de «en curso»
+        // prometia que se reclamaria solo, y eso solo es verdad con la casilla puesta. Pero
+        // atar la BALDOSA a esa promesa escondia ademas los minutos que faltan, el estado
+        // del reto y el boton de cobrar a mano, que no tienen nada que ver con reclamar
+        // automaticamente y valen igual con la casilla quitada. Ahora se condiciona solo la
+        // frase, que es lo unico que la casilla puede desmentir (2026-08-27).
         function _dailyChestCard() {
-            if (!cleanExpiredInventoryFlag) return null;
             const c = _dailyWatchChallenge();
             if (!c || !c.condition) return null;
             const done = Number(c.condition.progress) || 0;
@@ -6246,7 +6250,10 @@
                 footer.className = 'flex items-center justify-center gap-1 px-2 py-2';
                 const nota = document.createElement('span');
                 nota.className = 'text-surface-onSurfaceSecondary text-center text-xs';
-                nota.textContent = t.dailyRewardAuto || '';
+                // Solo con la casilla puesta: sin ella nadie va a reclamarlo por ti, y la
+                // frase seria justo lo contrario de lo que pasa. La baldosa se queda —los
+                // minutos que faltan siguen siendo ciertos—, callada.
+                nota.textContent = cleanExpiredInventoryFlag ? (t.dailyRewardAuto || '') : '';
                 footer.appendChild(nota);
             }
             card.appendChild(footer);

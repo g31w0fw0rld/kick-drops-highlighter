@@ -91,11 +91,28 @@ const base = {
         if (!c.clicable) fallos.push('la baldosa no se ofrece como pulsable mientras se acumula');
     }
 
-    // --- La misma cosa SIN la casilla: nada ----------------------------------------
+    // --- La misma cosa SIN la casilla: la baldosa se queda, la promesa no ----------
+    //
+    // Hasta el 2026-08-27 la baldosa ENTERA dependia de la casilla, y el argumento era
+    // bueno a medias: la frase «se reclama solo» solo es cierta con la casilla puesta.
+    // Pero atar la baldosa a esa frase se llevaba por delante los minutos que faltan, el
+    // estado del reto y el boton de cobrar a mano, que no tienen nada que ver con
+    // reclamar automaticamente y valen igual con la casilla quitada. Asi que ahora se
+    // condiciona SOLO la frase, que es lo unico que la casilla puede desmentir.
     const sinCasilla = await run({ ...base, seed: {}, challenges: reto() });
     anota('sin la casilla', sinCasilla);
-    if (sinCasilla.cofre) {
-        fallos.push('sin la casilla de reclamados la tarjeta se pinto igual, y ahi no hay reclamo automatico que prometer');
+    if (!sinCasilla.cofre) {
+        fallos.push('sin la casilla no se pinto la baldosa, y los minutos que faltan son ciertos igual');
+    } else {
+        const c = sinCasilla.cofre;
+        // La barra, el numero y el aviso siguen: son el estado del reto, no una promesa.
+        if (c.contador !== '14/60') fallos.push(`sin la casilla el contador dice "${c.contador}"`);
+        if (c.aviso !== 'Tiempo restante: 46m') fallos.push(`sin la casilla el aviso dice "${c.aviso}"`);
+        // Lo unico que se calla es la frase, y el pie sigue siendo el pie de «en curso»:
+        // sin casilla no hay boton de reclamar automatico que ofrecer ni ✓ que pintar.
+        if (c.pie !== 'nota') fallos.push(`sin la casilla el pie es "${c.pie}" y tenia que seguir siendo la nota`);
+        if ((c.pieTexto || '').trim() !== '')
+            fallos.push(`sin la casilla la nota sigue prometiendo un reclamo que no va a pasar: "${c.pieTexto}"`);
     }
 
     // --- Cumplido: el boton -------------------------------------------------------

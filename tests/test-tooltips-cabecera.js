@@ -1,4 +1,4 @@
-// Los tres controles que NUNCA tuvieron aviso.
+// Los controles de la cabecera que NUNCA tuvieron aviso.
 //
 // La migración del 2026-08-20 cambió la CAJA de los avisos que ya existían, pero no
 // creó ninguno: los controles que se explicaban solos con su etiqueta —«Editar
@@ -11,11 +11,13 @@
 //   🔼 / 🔽   contrae y despliega el panel. Su aviso dice lo que va a hacer el CLIC,
 //             no cómo está el panel, así que cambia con el icono: por eso se compueba
 //             en los dos estados y no solo en uno.
-//   ✕         calla el recordatorio de la racha. «Cerrar» sería mentira a medias: el
-//             silencio dura lo que dure el reto de hoy, no la sesión, y eso es
-//             exactamente lo que hay que saber ANTES de pulsar.
 //
-// Contra HEAD los tres salen «la caja no apareció», porque sin `title` el motor no
+// Aquí hubo un tercero, la ✕ que callaba el recordatorio de la racha, con el aviso
+// «Silenciar hasta mañana». Se fue con el control el 2026-08-27: el aviso del reto del
+// día es ahora una fila más de la pestaña 🔔 y se calla con su 👁️, que es el mismo botón
+// que el de cualquier otra alerta y ya se explica desde la propia pestaña.
+//
+// Contra HEAD los dos salen «la caja no apareció», porque sin `title` el motor no
 // tiene nada que servir.
 const { run, readFixture } = require('./harness');
 const group = readFixture('fixture-group.html');
@@ -24,8 +26,10 @@ const DIA = 24 * 60 * 60 * 1000;
 const medianocheUTC = ms => new Date(ms).toISOString().slice(0, 10) + 'T00:00:00Z';
 const AHORA = Date.now();
 
-// Un reto a medias, que es el único estado en el que la tira se ve (ver
-// test-racha-diaria.js): sin él no hay ✕ que apuntar.
+// Un reto a medias. Ya no hay ✕ que apuntar, pero se conserva a propósito: con un aviso
+// pendiente el panel abre por la pestaña 🔔, y estos dos controles viven en la cabecera,
+// que está delante en cualquier pestaña. O sea que además comprueba que no dependen de
+// cuál esté abierta.
 const CHALLENGES = [{
     id: '00000000-0000-7000-8000-000000000001',
     recurrence: 'daily', status: 'in_progress',
@@ -34,8 +38,7 @@ const CHALLENGES = [{
     drop_table: [{ rarity: 'common', weighting: 550000 }]
 }];
 
-const SELS = ['#kick-drops-info-btn', '#kick-drops-collapse-btn',
-              '#kick-drops-daily-reminder span[title]'];
+const SELS = ['#kick-drops-info-btn', '#kick-drops-collapse-btn'];
 
 const vuelta = (collapsado) => run({
     url: 'https://kick.com/drops/campaigns',
@@ -60,10 +63,10 @@ const vuelta = (collapsado) => run({
     }, null, 2));
 
     const fallos = [];
-    // La tira tiene que estar de verdad a la vista: si no, el ✕ que se apunta no es
-    // uno que el usuario pueda encontrar y el caso no prueba nada.
+    // El aviso del día tiene que estar pendiente de verdad: es lo que hace que el panel
+    // abra por la pestaña 🔔, que es el escenario que se quería probar aquí.
     if (!abierto.racha || !abierto.racha.visible)
-        fallos.push('la tira de la racha no se ve, así que el caso del ✕ no vale');
+        fallos.push('el aviso del reto del día no está pendiente, así que el caso no vale');
 
     const revisa = (c, nombre, esperado) => {
         if (!c) { fallos.push('no se llegó a apuntar ' + nombre); return; }
@@ -86,7 +89,6 @@ const vuelta = (collapsado) => run({
     revisa(caso(abierto, 'info-btn'), 'ℹ️', 'Informacion del script');
     revisa(caso(abierto, 'collapse-btn'), '🔼 (desplegado)', 'Ocultar el panel');
     revisa(caso(cerrado, 'collapse-btn'), '🔽 (contraído)', 'Mostrar el panel');
-    revisa(caso(abierto, 'daily-reminder'), '✕ de la racha', 'Silenciar hasta mañana');
 
     console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
     process.exit(0);
