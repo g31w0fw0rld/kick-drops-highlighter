@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.2
+// @version      1.3.3
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
+// @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
 // @author       g31w0fw0rld
 // @license      MIT
@@ -18,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.2";
+    const SCRIPT_VERSION = "1.3.3";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -1852,13 +1853,55 @@
             return { positive, negative };
         }
 
+        // ---------------------------------------------
+        // Comparacion sin acentos
+        // ---------------------------------------------
+        // El mismo nombre se escribe con tilde y sin ella segun quien lo teclee: la
+        // fila de la pagina dice «Pokémon» y la entrada de la API «Pokemon». Con la
+        // keyword `pokemon` eso marcaba unas campañas y no otras, sin nada visible
+        // que lo explicara. Se compara sin diacriticos por el mismo motivo por el que
+        // se compara en minusculas: la tilde es ortografia del titulo, no parte de lo
+        // que el usuario quiso filtrar.
+        //
+        // Y no solo el filtro: el MISMO criterio rige el cruce entre la pagina y la API
+        // —titulos, alias, marcas, encabezados de seccion, nombres de recompensa—, que
+        // es donde una tilde de diferencia no deja de marcar una campaña sino que la
+        // pierde: la tarjeta no encuentra su entrada, la deduplicacion no la reconoce y
+        // la misma campaña sale dos veces, o el aviso no encuentra su campaña. Un cruce
+        // que compare con mas rigor que el filtro es un cruce que falla justo donde el
+        // filtro acerto.
+        //
+        // Solo TILDES DE VOCALES. La ñ no se toca: 'ñ' y 'n' son letras distintas y
+        // verlas casar seria raro, mientras que «Pokemon»/«Pokémon» son la misma palabra
+        // mal copiada. Se consigue borrando la marca solo cuando cuelga de una vocal.
+        //
+        // NFD separa cada letra de su tilde y el rango U+0300-U+036F son las tildes ya
+        // sueltas, asi que 'é' queda en 'e'. Y se RECOMPONE al salir (NFC) para que lo
+        // devuelto sea la cadena de entrada menos las tildes de vocales y nada mas: la ñ
+        // vuelve a ser un solo caracter y el hangul y el CJK salen intactos. Sin ese
+        // segundo paso el texto seguia descompuesto y CRECIA —'한' pasa a tres jamo—, lo
+        // que le daba ventaja a un titulo coreano en la puntuacion por longitud de
+        // _titleScore. De paso, una cadena que llegue ya descompuesta casa con la misma
+        // cadena compuesta, que antes no casaba.
+        //
+        // Se aplica SOLO al comparar, nunca al guardar ni al enseñar: la keyword se
+        // sigue almacenando tal como se escribio, el chip de la tarjeta la devuelve con
+        // su tilde y los titulos se pintan como los escribe cada fuente. Los datos que
+        // se PERSISTEN quedan fuera a proposito (buildDataSnapshot, _domTitleByGameId):
+        // doblarlos cambiaria cadenas ya guardadas y el primer arranque tras actualizar
+        // veria «cambios» donde no hay ninguno.
+        function _fold(s) {
+            return String(s == null ? '' : s).normalize('NFD').replace(/([aeiouAEIOU])[\u0300-\u036f]+/g, '$1').normalize('NFC');
+        }
+
         // Casa si toca al menos una positiva Y ninguna negativa. La negativa manda
         // sobre la positiva a proposito: "rust" pero no "rust console" solo tiene
         // sentido si lo segundo gana.
         function _matchesKeywords(searchText) {
             const { positive, negative } = _splitKeywords(keywords);
-            if (negative.some(k => searchText.includes(k))) return false;
-            return positive.some(k => searchText.includes(k));
+            const text = _fold(searchText);
+            if (negative.some(k => text.includes(_fold(k)))) return false;
+            return positive.some(k => text.includes(_fold(k)));
         }
 
         // La mitad negativa de _matchesKeywords, suelta. Hace falta aparte porque «no
@@ -1866,13 +1909,15 @@
         // positiva —que otra fuente todavia puede desmentir, ver _apiEntryForCard— o haber
         // encontrado una negativa, que es una orden y no admite segunda opinion.
         function _hasNegativeKeyword(searchText) {
-            return _splitKeywords(keywords).negative.some(k => searchText.includes(k));
+            const text = _fold(searchText);
+            return _splitKeywords(keywords).negative.some(k => text.includes(_fold(k)));
         }
 
         // Las que se enseñan en la tarjeta: solo positivas, porque son las que
         // explican POR QUE aparece la campaña.
         function _matchedPositiveKeywords(searchText) {
-            return _splitKeywords(keywords).positive.filter(k => searchText.includes(k));
+            const text = _fold(searchText);
+            return _splitKeywords(keywords).positive.filter(k => text.includes(_fold(k)));
         }
 
         // ---------------------------------------------
@@ -2263,11 +2308,11 @@
         // subcategoria, que esta en la URL del banner de la fila y en `category.id`), y
         // eso es otro trabajo.
         function _apiEntryForCard(gameName) {
-            const g = String(gameName || '').trim().toLowerCase();
+            const g = _fold(String(gameName || '').trim().toLowerCase());
             if (!g) return null;
             for (const [key, entry] of Object.entries(_apiDropNames)) {
                 if (!entry || !entry.keyIsCategory) continue;
-                if (String(key).trim().toLowerCase() === g) return entry;
+                if (_fold(String(key).trim().toLowerCase()) === g) return entry;
             }
             return null;
         }
@@ -2276,11 +2321,11 @@
         // ("Juego - Organizacion"). Tambien exacto, y contra la misma cadena que se guardo:
         // asi el que decide es el dato, no un parecido.
         function _apiEntryForNotifTitle(notifTitle) {
-            const t = String(notifTitle || '').trim().toLowerCase();
+            const t = _fold(String(notifTitle || '').trim().toLowerCase());
             if (!t) return null;
             for (const [key, entry] of Object.entries(_apiDropNames)) {
                 if (!entry) continue;
-                if (String(entry.displayTitle || key).trim().toLowerCase() === t) return entry;
+                if (_fold(String(entry.displayTitle || key).trim().toLowerCase()) === t) return entry;
             }
             return null;
         }
@@ -2288,9 +2333,9 @@
         // Find full API entry for a card title — returns {drops}
         function _findEntryForTitle(cardTitle) {
             if (!cardTitle) return null;
-            const ct = cardTitle.toLowerCase();
+            const ct = _fold(cardTitle.toLowerCase());
             for (const [key, entry] of Object.entries(_apiDropNames)) {
-                const k = key.toLowerCase();
+                const k = _fold(key.toLowerCase());
                 if (ct.includes(k) || k.includes(ct)) return entry;
                 const cardGame = ct.split(' - ')[0].trim();
                 const keyGame = k.split(' - ')[0].trim();
@@ -2349,7 +2394,7 @@
                 // puerta y se le cerraba la otra. Las negativas siguen aplicandose, que es
                 // lo que protege esta puerta.
                 if (!_matchesKeywords(entry.searchText || titleLower)) continue;
-                const exists = notifs.find(n => n.title === title || (n.title && n.title.toLowerCase() === titleLower));
+                const exists = notifs.find(n => n.title === title || (n.title && _fold(n.title.toLowerCase()) === _fold(titleLower)));
                 if (!exists) {
                     const dataSnapshot = buildDataSnapshot(title);
                     notifs.push({
@@ -2559,12 +2604,12 @@
             const byName = {};
             for (const c of _interceptedAllCampaigns) {
                 const watched = Number(c && c.progress_units) || 0;
-                const campKey = _collapse(c && c.name).toLowerCase();
+                const campKey = _fold(_collapse(c && c.name).toLowerCase());
                 for (const r of (c && c.rewards) || []) {
                     if (!r || !r.id) continue;
                     if (r.claimed) {
                         claimed.add(r.id);
-                        const n = _collapse(r.name).toLowerCase();
+                        const n = _fold(_collapse(r.name).toLowerCase());
                         if (campKey && n) (byName[campKey] || (byName[campKey] = new Set())).add(n);
                         continue;
                     }
@@ -3079,9 +3124,10 @@
 
         function deleteNotificationsByKeyword(keyword) {
             const notifs = getNotifications();
+            const kw = _fold(keyword);
             const filtered = [];
             for (const n of notifs) {
-                if (!n.title.toLowerCase().includes(keyword)) {
+                if (!_fold(n.title.toLowerCase()).includes(kw)) {
                     filtered.push(n);
                 }
             }
@@ -3104,15 +3150,15 @@
                 // —incluso añadir una keyword que no tiene nada que ver— la borraba, y
                 // volvia a nacer en la siguiente vuelta: un parpadeo sin explicacion.
                 if (n.kind === 'daily') { filtered.push(n); continue; }
-                const title = (n.title || '').toLowerCase();
+                const title = _fold((n.title || '').toLowerCase());
                 // El aviso puede existir por algo que su TITULO no dice: el filtro de la
                 // API mira tambien el nombre de la campaña. Juzgandolo solo por el titulo,
                 // tocar la lista de keywords —incluso añadir una que no tiene nada que ver—
                 // se llevaba por delante esos avisos, y volvian a nacer al siguiente
                 // escaneo: un parpadeo sin explicacion.
                 const entry = _apiEntryForNotifTitle(n.title);
-                const apiText = (entry && entry.searchText) || '';
-                const casa = kw => title.includes(kw) || (apiText && apiText.includes(kw));
+                const apiText = _fold((entry && entry.searchText) || '');
+                const casa = kw => title.includes(_fold(kw)) || (apiText && apiText.includes(_fold(kw)));
                 if (negative.some(casa)) continue;
                 if (positive.some(casa)) filtered.push(n);
             }
@@ -4688,9 +4734,9 @@
             // estando ya en la pagina. Si no esta ni escaneado ni como encabezado
             // suelto, no se hace nada: mejor quedarse arriba que saltar a la campaña
             // equivocada.
-            const wanted = String(target.title).toLowerCase();
+            const wanted = _fold(String(target.title).toLowerCase());
             const found = (items || []).find(c =>
-                c && c.element && String(c.title || '').toLowerCase() === wanted);
+                c && c.element && _fold(String(c.title || '').toLowerCase()) === wanted);
             _focusCampaignOnPage(found || { title: target.title });
         }
 
@@ -4700,7 +4746,7 @@
         // Devuelve el encabezado y no la tarjeta que lo contiene: es lo que hay que dejar
         // a la vista, y una tarjeta puede medir varias pantallas.
         function _findPageNodeByCampaignName(name) {
-            const wanted = String(name || '').trim().toLowerCase();
+            const wanted = _fold(String(name || '').trim().toLowerCase());
             if (!wanted) return null;
             for (const h of _dropsQuery('h2, h3')) {
                 // Ni lo que dibujamos nosotros ni las pestañas que Kick deja montadas y
@@ -4708,7 +4754,7 @@
                 // sitio visible.
                 if (h.closest('#kick-drops-panel')) continue;
                 if (_isInHiddenPanel(h)) continue;
-                if ((h.textContent || '').trim().toLowerCase() !== wanted) continue;
+                if (_fold((h.textContent || '').trim().toLowerCase()) !== wanted) continue;
                 return h;
             }
             return null;
@@ -5057,7 +5103,10 @@
                 if (!entry || entry.status !== status) continue;
                 if (!entry.drops || entry.drops.length === 0) continue;
                 const title = entry.displayTitle || key;
-                if (seen.has(title.toLowerCase())) continue;
+                // `seen` y `seenSubNames` llegan doblados desde renderResults (ver
+                // _fold), asi que la entrada de la API se dobla tambien: si no, una
+                // tilde de diferencia entre las dos fuentes saca la campaña dos veces.
+                if (seen.has(_fold(title.toLowerCase()))) continue;
                 // Segunda clave, para las campañas que el titulo no puede cruzar: si
                 // esta entrada ES la unica sub-campaña de un grupo que YA esta delante
                 // como tarjeta del DOM, no vuelve a entrar. Es identidad y no parecido
@@ -5067,7 +5116,7 @@
                 // sub-campaña se decide al componerlo, en renderResults, que es donde
                 // esta explicado el porque.
                 if (seenSubNames && seenSubNames.size &&
-                    (entry.drops || []).some(d => seenSubNames.has(_collapse(d.campaignName).toLowerCase()))) continue;
+                    (entry.drops || []).some(d => seenSubNames.has(_fold(_collapse(d.campaignName).toLowerCase())))) continue;
                 // Y una CERRADA que ya reclamaste tampoco entra, porque la pagina no
                 // la tiene en cerradas: la tiene en Reclamados. Verificado el 2026-08-20
                 // con los dos volcados del mismo rato —Rust con sus doce sub-campañas en
@@ -5125,7 +5174,7 @@
             // por cerrado salia en las dos a la vez.
             const scanned = new Set(
                 [].concat(activeItems || [], upcomingItems || [], expiredItems || [])
-                    .map(i => String(i.title || '').toLowerCase())
+                    .map(i => _fold(String(i.title || '').toLowerCase()))
             );
             // Y contra las sub-campañas de esas mismas tarjetas, que es lo unico que
             // cruza cuando la campaña de la API no trae `category`: su clave es el
@@ -5147,7 +5196,7 @@
                 [].concat(activeItems || [], upcomingItems || [], expiredItems || [])
                     .filter(i => (i.subNames || []).length === 1)
                     .reduce((acc, i) => acc.concat(i.subNames), [])
-                    .map(n => String(n).toLowerCase())
+                    .map(n => _fold(String(n).toLowerCase()))
             );
             activeItems = (activeItems || []).concat(_apiItemsFor('active', scanned, scannedSubNames));
             upcomingItems = (upcomingItems || []).concat(_apiItemsFor('upcoming', scanned, scannedSubNames));
@@ -5535,14 +5584,14 @@
             let upcomingHeaderEl = null;
 
             allH1s.forEach(h1 => {
-                const text = h1.textContent.trim();
-                if (CLOSED_HEADER_TEXTS.some(ct => text.toLowerCase() === ct.toLowerCase())) {
+                const text = _fold(h1.textContent.trim().toLowerCase());
+                if (CLOSED_HEADER_TEXTS.some(ct => text === _fold(ct.toLowerCase()))) {
                     closedHeaderEl = h1;
                 }
-                if (OPEN_HEADER_TEXTS.some(ot => text.toLowerCase() === ot.toLowerCase())) {
+                if (OPEN_HEADER_TEXTS.some(ot => text === _fold(ot.toLowerCase()))) {
                     openHeaderEl = h1;
                 }
-                if (UPCOMING_HEADER_TEXTS.some(ut => text.toLowerCase() === ut.toLowerCase())) {
+                if (UPCOMING_HEADER_TEXTS.some(ut => text === _fold(ut.toLowerCase()))) {
                     upcomingHeaderEl = h1;
                 }
             });
@@ -5729,10 +5778,10 @@
             const routeStatus = _routeStatus();
             let status = routeStatus || 'active';
             const classifyByHeader = (text) => {
-                const h = text.trim().toLowerCase();
-                if (CLOSED_HEADER_TEXTS.some(ct => h === ct.toLowerCase())) return 'expired';
-                if (UPCOMING_HEADER_TEXTS.some(ut => h === ut.toLowerCase())) return 'upcoming';
-                if (OPEN_HEADER_TEXTS.some(ot => h === ot.toLowerCase())) return 'active';
+                const h = _fold(text.trim().toLowerCase());
+                if (CLOSED_HEADER_TEXTS.some(ct => h === _fold(ct.toLowerCase()))) return 'expired';
+                if (UPCOMING_HEADER_TEXTS.some(ut => h === _fold(ut.toLowerCase()))) return 'upcoming';
+                if (OPEN_HEADER_TEXTS.some(ot => h === _fold(ot.toLowerCase()))) return 'active';
                 return null;
             };
             let walker = node.parentElement;
@@ -6693,9 +6742,12 @@
         // —la misma regla que los filtros de vista: lo que no se puede juzgar se deja—.
         function _isClaimedRewardLi(li) {
             if (!_progressInventoryReady) return false;
-            const name = _rewardNameOfLi(li).toLowerCase();
+            // Los dos nombres salen del DOM y el indice se construyo desde la API, asi
+            // que van doblados por los dos lados (ver _fold): una «Poké Ball» de un lado
+            // y una «Poke Ball» del otro dejaban la baldosa sin reconocer.
+            const name = _fold(_rewardNameOfLi(li).toLowerCase());
             if (!name) return false;
-            const camp = _collapse(_findCampaignNameForKickLi(li)).toLowerCase();
+            const camp = _fold(_collapse(_findCampaignNameForKickLi(li)).toLowerCase());
             const claimed = camp ? _claimedRewardNames[camp] : null;
             return !!claimed && claimed.has(name);
         }
@@ -7449,9 +7501,9 @@
                 // nada y se queda como compatibilidad.
                 if (doHide) {
                     _dropsQuery('h1').forEach((h1) => {
-                        const text = (h1.textContent || '').trim().toLowerCase();
+                        const text = _fold((h1.textContent || '').trim().toLowerCase());
                         if (!text) return;
-                        if (!EXPIRED_HEADER_TEXTS.some(t => text === t)) return;
+                        if (!EXPIRED_HEADER_TEXTS.some(t => text === _fold(t))) return;
                         const section = h1.parentElement;
                         if (section) section.style.display = 'none';
                     });

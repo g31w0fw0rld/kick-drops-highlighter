@@ -63,6 +63,7 @@ pide tiene que salir él mismo.
 | `test-expiradas-reclamadas.js` | La cerrada con todo reclamado se va del panel (la página la tiene en Reclamados); la que aún debe algo se queda, y sin inventario no se esconde nada |
 | `test-tooltip-propio.js` | La caja de aviso del script: sale con su texto, peso 600 solo para los valores, y el `title` se guarda mientras está arriba y vuelve al salir |
 | `test-tooltips-cabecera.js` | Los tres controles que solo son un icono —ℹ️, el chevrón y la ✕ de la racha—: cada uno dice lo suyo, y el del chevrón cambia según si el clic va a contraer o a desplegar |
+| `test-icono-incrustado.js` | Que el `@icon` vaya **incrustado** como `data:image/png;base64,…` y que el base64 decodifique a un PNG cuadrado de verdad. No comprueba una URL: existe porque un `@icon` remoto hizo que **OpenUserJS rechazara con un 500** la release 1.1.1 de `alienware-arena-arp-tracker` («unsupported file type: undefined») mientras GitHub y GreasyFork la aceptaban sin queja — o sea que el fallo solo se ve en el tercer destino y después de haber pusheado. Que la URL responda 200 con tipo de imagen **no basta**: el favicon de AWA pasaba esas comprobaciones. |
 
 El cofre lo monta **solo** quien lo pide, porque no vive en el `<main>` de drops y en los volcados de
 escritorio de `docs/` no aparece. Cuatro variantes, y las diferencias son las que deciden quién puede
