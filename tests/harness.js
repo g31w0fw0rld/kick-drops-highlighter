@@ -9,7 +9,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 // correr el mismo test contra una copia sin el arreglo y ver que falla. Sin eso, un
 // test nuevo puede estar en verde por no comprobar nada.
 const SCRIPT = fs.readFileSync(process.env.KICK_SCRIPT ||
-    '/Users/usuario/code/scripts/kick-drops-highlighter/kick-drops-highlighter.user.js', 'utf8');
+    __dirname + '/../kick-drops-highlighter.user.js', 'utf8');
 const HERE = __dirname;
 
 const readFixture = f => fs.readFileSync(path.join(HERE, f), 'utf8');
