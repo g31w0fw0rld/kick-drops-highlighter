@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.3
+// @version      1.3.4
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.3";
+    const SCRIPT_VERSION = "1.3.4";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -8086,8 +8086,32 @@
                 : null;
             console.log('[Kick Drops] pestaña:', tab || 'DESCONOCIDA', location.pathname);
 
-            if (tab === 'claimed') _claimedPageWork();
-            else _startDropsPolling();
+            if (tab === 'claimed') { _claimedPageWork(); return; }
+            // UNA PESTAÑA QUE NO CONOCEMOS NO SE ESCANEA. El panel si se pinta —se llena
+            // de la API y ahi sigue siendo util—, pero la pagina no se toca.
+            //
+            // Kick estreno /drops/rewards en septiembre de 2026 (un escaparate de badges,
+            // emotes y KICKs, sin campañas), y con ella se vio que las dos puertas de
+            // entrada no hacian lo mismo: llegando por la barra de pestañas, onUrlChange
+            // ya exigia `_kindOfPath(newPath)` y no hacia nada; llegando por la URL o
+            // recargando, se caia por este `else` y se escaneaba igual.
+            //
+            // Y escanear ahi no es inofensivo. Sin campañas, los dos selectores buenos
+            // dan cero, eso activa el barrido de respaldo por `[data-state],
+            // .bg-surface-base` —que dentro del <main> alcanza el bloque «Rewards» de
+            // Kick— y en processCampaignNode `status = routeStatus || 'active'` convierte
+            // una ruta sin reconocer en campaña ABIERTA. Comprobado sobre el volcado
+            // `docs/dom-rewards-empty-2026-09.html` con una sola keyword `war`, que casa
+            // por dentro de «Re-war-ds» igual que `rage` casaba dentro de «Ave-rage-Aden»:
+            // salia una tarjeta fantasma «Rewards» en Drops Abiertos y el borde verde
+            // sobre el bloque de Kick.
+            //
+            // El corte va aqui —en el reparto— y no en `TAB_SEGMENT_HINTS`: meter
+            // «rewards» en las pistas la clasificaria como una seccion de campañas, que
+            // es justo lo que no es. Lo que se hace es que el arranque diga lo mismo que
+            // ya decia la navegacion.
+            if (!tab) return;
+            _startDropsPolling();
         }
 
         // Colapsa todos los acordeones de campaña que esten abiertos para que la

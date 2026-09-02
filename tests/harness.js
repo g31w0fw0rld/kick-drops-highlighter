@@ -22,6 +22,11 @@ function page({ url, panels, cofre }) {
             <div class="h-full flex-1"><div class="flex flex-col gap-5">${p.html}</div></div>
         </div>`).join('\n');
 
+    // Son CINCO pestañas desde septiembre de 2026: Kick añadio /drops/rewards, que no es
+    // una seccion de campañas sino un escaparate de badges, emotes y KICKs. Va en la barra
+    // de todos los tests porque esta en la pagina de verdad, y porque el script tiene que
+    // seguir sin clasificarla (ver _kindOfPath y test-pestana-desconocida).
+
     // La barra lateral de Kick, FUERA del <main>. Va en todos los tests a proposito:
     // es lo que hay de verdad en la pagina, y lo que se coló en el panel el 2026-08-07
     // —una tarjeta "AverageAden" y un borde verde sobre un canal recomendado— cuando
@@ -90,6 +95,7 @@ function page({ url, panels, cofre }) {
             <a class="font-semibold h-12 text-base" href="/drops/coming-soon"${url.includes('coming-soon') ? ' data-state="active"' : ''}>Coming soon</a>
             <a class="font-semibold h-12 text-base" href="/drops/claimed"${url.includes('claimed') ? ' data-state="active"' : ''}>Claimed</a>
             <a class="font-semibold h-12 text-base" href="/drops/expired"${url.includes('expired') ? ' data-state="active"' : ''}>Expired</a>
+            <a class="font-semibold h-12 text-base" href="/drops/rewards"${url.includes('rewards') ? ' data-state="active"' : ''}>Rewards</a>
           </div>
           ${body}
         </div>
