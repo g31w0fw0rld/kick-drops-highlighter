@@ -1,6 +1,6 @@
 # Kick Drops Highlighter + Keywords
 
-Tampermonkey userscript that classifies and highlights drops/campaigns on Kick based on your keywords. / Userscript de Tampermonkey que clasifica y resalta drops/campañas en Kick según tus palabras clave.
+Userscript that classifies and highlights drops/campaigns on Kick based on your keywords. / Userscript que clasifica y resalta drops/campañas en Kick según tus palabras clave.
 
 > [!NOTE]
 > **ONE CHECKBOX DOES TWO THINGS / UNA CASILLA HACE DOS COSAS:** ticking *hide expired/completed* also turns on automatic claiming — of your finished **drops** and of the **daily reward chest**, which the label does not say. It claims by clicking Kick's own buttons for rewards you already earned by watching: nothing is sent to Kick's API to claim, and it grants you nothing you could not click yourself. It is still automation, which Kick's terms may not permit, so decide with that in mind. / Marcar *ocultar cerrados/completados* activa además la reclamación automática —de tus **drops** terminados y del **cofre de recompensa diaria**—, algo que la etiqueta no dice. Reclama pulsando los propios botones de Kick, sobre recompensas que ya te ganaste viendo: no se envía nada a la API de Kick para reclamar, y no te da nada que no pudieras pulsar tú. Sigue siendo automatización, que las condiciones de Kick pueden no permitir, así que decide sabiéndolo.
@@ -145,7 +145,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 **Language:** 16 languages — Spanish, English, German, French, Portuguese, Russian, Turkish, Japanese, Korean, Polish, Finnish, Vietnamese, Chinese, Arabic, Hindi and Indonesian — read from `<html lang>`, which is the language Kick serves the page in, then from your browser if the page did not say, falling back to English. Regional variants collapse to their base language, so `pt-BR` reads as Portuguese.
 
 **Install:**
-1. Install [Tampermonkey](https://www.tampermonkey.net/).
+1. Install a userscript manager: [Violentmonkey](https://violentmonkey.github.io/) (open source, Chrome/Edge/Firefox) or [Tampermonkey](https://www.tampermonkey.net/). On Chrome and Edge, also turn on **Allow user scripts** on the extension's own page in `chrome://extensions` — without it nothing runs.
 2. Open the installer: [kick-drops-highlighter.user.js](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js) (also on [GreasyFork](https://greasyfork.org/es-419/users/1590477-g31w) and [OpenUserJS](https://openuserjs.org/users/g31w0fw0rldgmail.com/scripts)).
 
 **Site:** `kick.com/drops/*`
@@ -247,7 +247,7 @@ Tampermonkey userscript that classifies and highlights drops/campaigns on Kick b
 **Idioma:** 16 idiomas —español, inglés, alemán, francés, portugués, ruso, turco, japonés, coreano, polaco, finés, vietnamita, chino, árabe, hindi e indonesio—, leídos del `<html lang>`, que es el idioma con el que Kick sirve la página, y luego del navegador si la página no lo dijera, con inglés como respaldo. Las variantes regionales caen a su idioma base, así que `pt-BR` se lee como portugués.
 
 **Instalación:**
-1. Instala [Tampermonkey](https://www.tampermonkey.net/).
+1. Instala un gestor de userscripts: [Violentmonkey](https://violentmonkey.github.io/) (código abierto, Chrome/Edge/Firefox) o [Tampermonkey](https://www.tampermonkey.net/). En Chrome y Edge, activa además **Allow user scripts** en la página de la propia extensión en `chrome://extensions`; sin eso no se ejecuta nada.
 2. Abre el instalador: [kick-drops-highlighter.user.js](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js) (también en [GreasyFork](https://greasyfork.org/es-419/users/1590477-g31w) y [OpenUserJS](https://openuserjs.org/users/g31w0fw0rldgmail.com/scripts)).
 
 **Sitio:** `kick.com/drops/*`
