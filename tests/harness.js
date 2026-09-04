@@ -113,6 +113,12 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
     vc.on('error', (...a) => logs.push('error: ' + a.join(' ')));
     vc.on('warn', (...a) => logs.push('warn: ' + a.join(' ')));
+    // Tambien los `console.log`. Hacia falta para poder CONTAR cuantas veces hace algo el
+    // script y no solo si lo hizo: sin esto, un test que buscara un log del script en
+    // `logs` encontraba 0 siempre y se leia como «no paso nunca», que es indistinguible de
+    // «paso y no lo estoy viendo». Es lo que me dio un falso 0 midiendo si el observer del
+    // repintado entraba en bucle.
+    vc.on('log', (...a) => logs.push('log: ' + a.join(' ')));
 
     const dom = new JSDOM(page({ url, panels, cofre }), {
         url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc
@@ -344,14 +350,30 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 // La barra de pestañas se mueve con el contenido, que es lo que hace
                 // Kick: el subrayado no espera a la URL. Sin esto no se puede ejercitar
                 // la comprobacion que mira la barra ademas de la ruta.
-                for (const a of w.document.querySelectorAll('main a[href^="/drops/"]')) {
-                    if (a.getAttribute('href') === paso.url.replace(/^https?:\/\/[^/]+/, '')) {
-                        a.setAttribute('data-state', 'active');
-                    } else {
-                        a.removeAttribute('data-state');
+                //
+                // Y con `barraTarda` se mueve DESPUES de la URL, que es la rendija de
+                // verdad: Kick cambia la ruta y el `data-state` la sigue un instante mas
+                // tarde. Hace falta poder ponerlo en ese orden porque es el unico en el
+                // que la barra y la URL se contradicen, y de eso colgaba que la rejilla de
+                // reclamados no volviera a pintarse nunca. Sin esta opcion el arnés las
+                // movia siempre juntas, o sea que nunca ejercitaba el desacuerdo: un test
+                // sobre esto habria salido verde con el fallo dentro.
+                const moverBarra = () => {
+                    for (const a of w.document.querySelectorAll('main a[href^="/drops/"]')) {
+                        if (a.getAttribute('href') === paso.url.replace(/^https?:\/\/[^/]+/, '')) {
+                            a.setAttribute('data-state', 'active');
+                        } else {
+                            a.removeAttribute('data-state');
+                        }
                     }
+                };
+                if (paso.barraTarda) {
+                    w.history.pushState({}, '', paso.url);
+                    setTimeout(moverBarra, paso.barraTarda);
+                } else {
+                    moverBarra();
+                    w.history.pushState({}, '', paso.url);
                 }
-                w.history.pushState({}, '', paso.url);
             }, paso.at || (6000 + i * 6000));
         });
     }

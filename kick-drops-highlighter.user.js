@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.5
+// @version      1.3.6
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.5";
+    const SCRIPT_VERSION = "1.3.6";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -6091,6 +6091,107 @@
         }
 
         // =============================================
+        // EL REPINTADO DE KICK SE LLEVA EL MARCADO
+        // =============================================
+        // Los chips de juego de Kick («All», «KICK», «Rust»…) no filtran con CSS: React
+        // repinta la lista. Y el marcado no vive en el DOM de Kick sino ENCIMA de el —un
+        // `id` en el nodo y un `style` con el borde en su padre—, asi que el repintado se
+        // lo lleva y no queda nada que lo reponga: `highlightAndLinkDrops()` solo se
+        // llamaba al llegar la API, en el barrido de arranque, y en un refresco acotado a
+        // `_isCampaignsPage()`. Reportado el 2026-09-04 en /drops/expired: la campaña
+        // seguia a la vista pero sin su borde rojo, y cambiar de filtro no lo devolvia.
+        //
+        // Aplica a las TRES pestañas que marcan —campañas, proximas y cerradas—, no solo a
+        // la que se reporto: los chips son los mismos en todas.
+        //
+        // DOS CUIDADOS, y el segundo ya nos costo un rato una vez:
+        //
+        // 1. Solo `childList`, nunca `attributes`. El marcado ESCRIBE atributos (`id`,
+        //    `style`), asi que observarlos seria mirarse al espejo: cada marca dispararia
+        //    otro escaneo, para siempre.
+        // 2. Aun con childList nos vemos, porque las marcas de pagina (⏳, 🔔) SI son
+        //    nodos que insertamos. Por eso se descartan las mutaciones que solo traen
+        //    cosas nuestras, y despues de cada escaneo se tira lo que ese escaneo acaba de
+        //    generar con `takeRecords()` —que es lo unico que corta el bucle de verdad,
+        //    porque el callback es asincrono y nuestras propias mutaciones ya estan en la
+        //    cola cuando volvemos—.
+        const REPAINT_DEBOUNCE_MS = 400;
+        let _repaintObserver = null;
+        let _repaintTimer = null;
+
+        // ¿Este nodo lo pusimos nosotros? El panel y la rejilla viven fuera de la lista,
+        // pero las marcas de pagina van pegadas al titulo de cada campaña.
+        function _esNodoPropio(n) {
+            if (!n || n.nodeType !== 1) return true;   // texto y comentarios: nada que reponer
+            if (n.classList && n.classList.contains('kick-drop-page-mark')) return true;
+            if (n.id === 'kick-drops-panel' || n.id === 'kick-claimed-inventory') return true;
+            return !!(n.closest && n.closest('#kick-drops-panel, #kick-claimed-inventory'));
+        }
+
+        function _mutacionAjena(muts) {
+            for (const m of muts) {
+                for (const n of m.addedNodes) if (!_esNodoPropio(n)) return true;
+                for (const n of m.removedNodes) if (!_esNodoPropio(n)) return true;
+            }
+            return false;
+        }
+
+        function _startRepaintObserver() {
+            if (_repaintObserver) return;
+            // Y RECLAMADOS TAMBIEN, que es donde mas duele.
+            //
+            // Esto decia «en reclamados el trabajo es otro y volver a escanear no
+            // repondria nada», y la primera mitad es cierta —ahi no se marca, se pinta la
+            // rejilla— pero la conclusion no: el trabajo es otro, no es ninguno. Y esa
+            // pestaña es la que peor lo lleva, porque nuestra rejilla SUSTITUYE a la lista
+            // de Kick: si un repintado se la lleva, no queda ni lo nuestro ni lo suyo.
+            //
+            // El reintento de `_renderClaimedInventorySoon` no cubre esto: se para en
+            // cuanto ve la rejilla puesta —y hace bien, si no seguiria sondeando para
+            // siempre—, asi que un repintado POSTERIOR le llega cuando ya no hay nadie
+            // mirando. Eso encaja con las dos mitades del reporte del 2026-09-04: si el
+            // repintado llega antes de que la rejilla se pinte, solo se nota la espera;
+            // si llega despues, la rejilla se va y no vuelve.
+            if (!_routeStatus() && !_isClaimedPage()) return;
+            const raiz = _dropsRoot();
+            if (!raiz) return;
+            _repaintObserver = new MutationObserver((muts) => {
+                if (!_mutacionAjena(muts)) return;
+                if (_repaintTimer) clearTimeout(_repaintTimer);
+                _repaintTimer = setTimeout(() => {
+                    _repaintTimer = null;
+                    // La pestaña puede haber cambiado durante la espera, asi que el
+                    // reparto se decide AQUI y no al arrancar el observer: el mismo
+                    // observer sirve a las cuatro pestañas y en cada una hay que reponer
+                    // otra cosa.
+                    if (_isClaimedPage()) {
+                        console.log('[Kick Drops] repintado detectado, re-pintando la rejilla', location.pathname);
+                        try {
+                            _renderClaimedInventorySoon();
+                        } catch (e) {
+                            console.warn('[Kick Drops] Fallo al re-pintar la rejilla', e);
+                        }
+                        if (_repaintObserver) _repaintObserver.takeRecords();
+                        return;
+                    }
+                    if (!_routeStatus()) return;
+                    // Se dice, y no es ruido: si esto sale en bucle, el observer se esta
+                    // viendo a si mismo y el `takeRecords()` de abajo no esta cortando.
+                    console.log('[Kick Drops] repintado detectado, re-marcando', location.pathname);
+                    try {
+                        highlightAndLinkDrops();
+                        _updateAllCardsWithDropNames();
+                    } catch (e) {
+                        console.warn('[Kick Drops] Fallo al re-marcar tras el repintado', e);
+                    }
+                    // Lo que acabamos de generar NO cuenta como repintado de Kick.
+                    if (_repaintObserver) _repaintObserver.takeRecords();
+                }, REPAINT_DEBOUNCE_MS);
+            });
+            _repaintObserver.observe(raiz, { childList: true, subtree: true });
+        }
+
+        // =============================================
         // CLAIMED INVENTORY SECTION (from intercepted API)
         // =============================================
 
@@ -8094,6 +8195,9 @@
         function _claimedPageWork() {
             cleanInventory(cleanExpiredInventoryFlag ? 'expired' : '', _finishDropsReview);
             _renderClaimedInventorySoon();
+            // El mismo vigilante que en las pestañas que marcan: aqui lo que se repone es
+            // la rejilla (ver _startRepaintObserver).
+            _startRepaintObserver();
         }
 
         // La rejilla necesita DOS cosas que llegan cuando quieren: la respuesta de
@@ -8102,15 +8206,36 @@
         // panel de reclamados —lo normal— _renderClaimedInventory no encontraba ancla,
         // se rendia en silencio y la rejilla no aparecia nunca. Ahora se reintenta
         // hasta que esta, que es la unica señal fiable de que se pudo pintar.
+        // UN SEGUNDO POR VUELTA, y no se baja. Se probo afinarlo a 300 ms para que la
+        // rejilla apareciera antes, y esta mal: cuando el dato todavia no ha llegado, cada
+        // vuelta de este sondeo PIDE el inventario a Kick, asi que afinarlo sube de 12
+        // peticiones posibles a 40 por cada vuelta a la pestaña. La espera se arregla por
+        // el otro lado —el observer repone la rejilla en cuanto React repinta, ver
+        // _startRepaintObserver— y no machacando su API.
         const CLAIMED_GRID_TRIES = 12;
         const CLAIMED_GRID_POLL_MS = 1000;
 
         function _renderClaimedInventorySoon(tries = 0) {
-            // Salirse de la pestaña cancela: la rejilla solo tiene sentido aqui, y si
-            // el usuario se fue ya no hay nada que esperar. Se pregunta tambien por la
-            // barra y no solo por la URL: este reintento vive un segundo por vuelta, que
-            // es tiempo de sobra para caer justo en el cambio de pestaña.
-            if (!_claimedTabIsFront()) return;
+            // DOS MOTIVOS PARA NO PINTAR, Y SOLO UNO ES DEFINITIVO.
+            //
+            // `_claimedTabIsFront()` dice `false` tanto porque te fuiste de reclamados
+            // como porque la barra de Kick todavia no se ha puesto al dia —la URL cambia
+            // y el `data-state="active"` la sigue un instante despues—. Trataba los dos
+            // igual, con un `return` sin reintento, asi que caer en esa rendija dejaba la
+            // rejilla sin pintar PARA SIEMPRE. Reportado el 2026-09-04 volviendo a
+            // reclamados desde otra pestaña: «tarda en repintar o no lo hace», y son los
+            // dos sintomas de esto —cuando la barra llega a tiempo solo se nota la
+            // espera, y cuando no llega, no vuelve—.
+            //
+            // Asi que la URL es la que cancela, que es la fuente que de verdad dice en
+            // que pestaña estas; el desacuerdo de la barra solo pospone.
+            if (!_isClaimedPage()) return;
+            if (!_claimedTabIsFront()) {
+                if (tries < CLAIMED_GRID_TRIES) {
+                    setTimeout(() => _renderClaimedInventorySoon(tries + 1), CLAIMED_GRID_POLL_MS);
+                }
+                return;
+            }
             if (_claimedInventoryReady) _renderClaimedInventory();
             else _fetchClaimedInventory();
             if (document.getElementById('kick-claimed-inventory')) return;
@@ -8292,6 +8417,9 @@
                     } catch (e) {
                         console.warn('[Kick Drops] Fallo al escanear', location.pathname, e);
                     }
+                    // Kick repinta la lista cuando pulsas uno de sus chips de juego, y el
+                    // marcado no sobrevive: hay que reponerlo.
+                    _startRepaintObserver();
                     // El colapso solo en la pestaña de campañas, que es la unica con
                     // acordeones que abrir. Antes habia aqui una segunda condicion, "no
                     // colapses si venimos de ver un drop concreto", que ya no existe
