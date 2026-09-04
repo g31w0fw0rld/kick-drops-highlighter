@@ -845,8 +845,19 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 })(),
                 claimedGrid: !!d.getElementById('kick-claimed-inventory'),
                 claimedGridCards: d.querySelectorAll('#kick-claimed-inventory img').length,
-                hiddenGroups: Array.from(d.querySelectorAll('.bg-surface-base.rounded-2xl'))
+                // LAS DOS GENERACIONES DE CLASES. Miraba solo `bg-surface-base`, que es la
+                // vieja, asi que desde el renombre de septiembre de 2026 no veia ni un grupo
+                // del DOM nuevo: un test que contara grupos escondidos ahi daba 0 siempre y
+                // se leia como «no esconde nada».
+                hiddenGroups: Array.from(d.querySelectorAll(
+                        '.bg-surface-base.rounded-2xl, .bg-surface-bg-default.rounded-2xl'))
                     .map(n => ({ display: n.style.display, id: n.id || null })),
+                // Las RECOMPENSAS escondidas de una en una, que es otra cosa que esconder el
+                // grupo entero: el barrido puede tapar `<li>` sueltos (los que dicen
+                // «Claimed») dejando el grupo a la vista, y contando solo grupos eso no se ve.
+                hiddenLis: Array.from(d.querySelectorAll('li'))
+                    .filter(li => li.style.display === 'none').length,
+                totalLis: d.querySelectorAll('li').length,
                 gridTitle: (d.querySelector('#kick-claimed-inventory h1') || {}).textContent || null,
                 gridHidden: (() => {
                     const g = d.getElementById('kick-claimed-inventory');

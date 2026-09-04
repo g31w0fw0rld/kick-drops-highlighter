@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.6
+// @version      1.3.7
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.6";
+    const SCRIPT_VERSION = "1.3.7";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -7626,6 +7626,26 @@
             const maxAttempts = 15;
             const interval = 600;
             const doClaim = (type === "expired" || type === "claim");
+            // LA PESTAÑA PARA LA QUE SE ARRANCO ESTE BARRIDO.
+            //
+            // `type` se congela al llamar y este intervalo vive NUEVE SEGUNDOS (15 x 600 ms)
+            // sin que nadie lo cancele, asi que si cambias de pestaña dentro de esa ventana
+            // el barrido sigue corriendo con las ordenes de la pestaña anterior. Y no era
+            // inocuo: `doHide` se calcula como
+            //
+            //     isTrophyCase ? false : (type === "expired")
+            //
+            // donde `isTrophyCase` se recalcula cada vuelta y exige `_isClaimedPage()`. En
+            // reclamados sale true y por eso ahi no esconde nada; en cuanto te vas, pasa a
+            // false, `doHide` se queda en true y en la pestaña NUEVA se ejecuta
+            // `if (isClaimed && doHide) li.style.display = 'none'`. Reportado el 2026-09-04
+            // en expiradas —«a veces oculta los drops reclamados»— y el «a veces» es la
+            // ventana: tardando mas de nueve segundos en cambiar, el barrido ya habia muerto.
+            // Pasa igual en proximas, que es la otra pestaña sin progreso ni reclamacion.
+            //
+            // Asi que el barrido se muere al salir de su pestaña, que es la unica lectura
+            // coherente: sus ordenes describian la pagina que ya no tienes delante.
+            const tabAlArrancar = _kindOfPath();
             let doneCalled = false;
             const finish = () => {
                 if (doneCalled) return;
@@ -7635,6 +7655,17 @@
 
             const checker = setInterval(() => {
                 attempts++;
+
+                // Y se comprueba ANTES de tocar nada: el cambio de pestaña ocurre entre dos
+                // vueltas, asi que la primera vuelta de despues tiene que salirse sin haber
+                // escondido ni reclamado. `finish()` se llama igual para no dejar la revision
+                // marcada como en curso para siempre —de eso cuelga el cofre, que espera a
+                // que termine—.
+                if (_kindOfPath() !== tabAlArrancar) {
+                    clearInterval(checker);
+                    finish();
+                    return;
+                }
 
                 // La pestaña /drops/claimed es, ENTERA, lo ya reclamado: no trae ni
                 // barras de progreso ni boton de reclamar, asi que el estado no se
