@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.4
+// @version      1.3.5
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.4";
+    const SCRIPT_VERSION = "1.3.5";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -120,6 +120,76 @@
         // pagina y solo salian en el panel, sacadas de la API.
         expired: ['/drops/expired']
     };
+
+    // ---------------------------------------------
+    // LAS DOS GENERACIONES DE CLASES DE KICK
+    // ---------------------------------------------
+    // En septiembre de 2026 Kick renombro entera su escala de tokens de diseño,
+    // metiendole un segmento `bg`/`fg` (fondo / primer plano):
+    //
+    //     bg-surface-base                 -> bg-surface-bg-default
+    //     bg-surface-highest              -> bg-surface-bg-highest
+    //     border-outline-decorative       -> border-surface-fg-decorative
+    //     text-surface-onSurfaceSecondary -> text-surface-fg-subtle
+    //
+    // No fue un retoque suelto: de las clases de Kick que este script usaba, las
+    // OCHO desaparecieron a la vez —cero apariciones en los volcados nuevos—. Y
+    // como de esas clases cuelga TODO el escaneo de la pagina, el script se quedo
+    // sin encontrar un solo nodo: ni marcaba campañas ni tenia donde anclar la
+    // rejilla de reclamados. El panel siguio bien porque se llena de la API, que no
+    // toca el DOM; por eso el sintoma parecia dos fallos y era uno.
+    //
+    // Lo que NO cambio, verificado extrayendo la misma campaña de los volcados de
+    // agosto y de septiembre y comparando el esqueleto sin `class`: el marcado es
+    // identico, etiqueta por etiqueta. O sea que esto es un renombre y nada mas, y
+    // por eso el arreglo puede ser un cambio de nombres en vez de una relectura de
+    // la pagina.
+    //
+    // Se aceptan LAS DOS y no se sustituye una por otra, por dos motivos:
+    //   · no se sabe si el despliegue de Kick es simultaneo para todo el mundo, y
+    //     un usuario que todavia reciba el marcado viejo se quedaria sin script;
+    //   · un selector que acepta ambas no hay que volver a tocarlo cuando el
+    //     despliegue termine, mientras que uno que solo acepte el nuevo obliga a
+    //     acertar la fecha.
+    // El coste es una lista de dos elementos por token. Cuando el DOM viejo ya no
+    // exista en ninguna parte, se borra el primer elemento de cada lista y ya.
+    const CLS_SURFACE = ['bg-surface-base', 'bg-surface-bg-default'];
+    const CLS_SURFACE_HIGH = ['bg-surface-highest', 'bg-surface-bg-highest'];
+    const CLS_CARD_BORDER = ['border-outline-decorative', 'border-surface-fg-decorative'];
+    const CLS_TEXT_SUBTLE = ['text-surface-onSurfaceSecondary', 'text-surface-fg-subtle'];
+    const CLS_SEPARATOR = ['bg-outline-decorative', 'bg-surface-fg-decorative'];
+
+    // `.a, .b` para querySelector. El sufijo permite selectores compuestos sin
+    // escribir el producto a mano: _anyOf(CLS_SURFACE, '.rounded-2xl') da
+    // '.bg-surface-base.rounded-2xl, .bg-surface-bg-default.rounded-2xl'.
+    function _anyOf(clases, sufijo = '', prefijo = '') {
+        return clases.map(c => prefijo + '.' + c + sufijo).join(', ');
+    }
+
+    function _hasAnyClass(node, clases) {
+        return !!node && !!node.classList && clases.some(c => node.classList.contains(c));
+    }
+
+    // Lo que ESCRIBIMOS en nuestras propias tarjetas lleva los dos nombres a la vez:
+    // la que no exista en el CSS de Kick es inerte, y asi la rejilla se ve igual de
+    // integrada en las dos versiones. Sin esto, arreglar solo los selectores dejaba
+    // la rejilla saliendo sin fondo.
+    const W_SURFACE = CLS_SURFACE.join(' ');
+    const W_SURFACE_HIGH = CLS_SURFACE_HIGH.join(' ');
+    const W_TEXT_SUBTLE = CLS_TEXT_SUBTLE.join(' ');
+    const W_SEPARATOR = CLS_SEPARATOR.join(' ');
+
+    const SEL_GAME_GROUP = _anyOf(CLS_SURFACE, '.rounded-2xl');
+    const SEL_SURFACE = _anyOf(CLS_SURFACE);
+    const SEL_CARD_BORDER = _anyOf(CLS_CARD_BORDER);
+    const SEL_TEXT_SUBTLE = _anyOf(CLS_TEXT_SUBTLE);
+    // La ventana de fechas de una sub-campaña: <p> con el token de texto tenue.
+    const SEL_DATE_P = _anyOf(CLS_TEXT_SUBTLE, '.text-sm', 'p');
+    // El tiempo dentro de una recompensa. Ademas de los dos nombres exactos van sus
+    // comodines, que es lo que ya habia: cubren una tercera variante del token sin
+    // tener que conocerla.
+    const SEL_TIME_SPAN = _anyOf(CLS_TEXT_SUBTLE, '', 'span')
+        + ', span[class*="onSurfaceSecondary"], span[class*="fg-subtle"]';
 
     function _normalizePath(path) {
         const p = String(path || '').split('?')[0].split('#')[0];
@@ -1604,21 +1674,27 @@
         // ([data-orientation="vertical"] con botones [data-state]) y sus
         // sub-campañas colgaban dentro. Ahora son divs planos, sin acordeon:
         //
-        //   div.bg-surface-base.rounded-2xl                 <- GRUPO del juego
+        //   div.<superficie>.rounded-2xl                  <- GRUPO del juego
         //     div > div > img[alt=juego]                       banner h-[67px] w-[50px]
         //              h2.text-2xl.font-bold.lg:text-base      nombre del juego ("Rust")
         //              p...lg:hidden                           estudio ("Facepunch Studios")
         //              p...max-lg:hidden                       contador ("12 claimed drops")
-        //     div.border-outline-decorative.bg-surface-base  <- TARJETA de sub-campaña (xN)
+        //     div.<borde-tarjeta>.<superficie>              <- TARJETA de sub-campaña (xN)
         //       img.size-6[alt=organizacion]
         //       h2.text-sm.font-bold                            nombre de la sub-campaña
         //       span.bg-secondary-base                          etiqueta ("Watch to redeem")
-        //       p.text-surface-onSurfaceSecondary.text-sm       ventana de fechas
+        //       p.<texto-tenue>.text-sm                         ventana de fechas
         //       ul > li ...                                     rewards
+        //
+        // Los nombres entre <> van asi porque Kick los renombro en septiembre de 2026
+        // y el script acepta las dos generaciones; los pares concretos estan en
+        // CLS_SURFACE / CLS_CARD_BORDER / CLS_TEXT_SUBTLE, con el porque al lado.
+        // Este esqueleto se verifico identico en los volcados de agosto y septiembre:
+        // lo unico que cambio fueron los nombres de clase.
         //
         // Tres trampas de este DOM, todas verificadas contra el volcado real:
         //
-        // 1. El GRUPO y la TARJETA llevan los dos `bg-surface-base`, que es como el
+        // 1. El GRUPO y la TARJETA llevan los dos la clase de superficie, que es como el
         //    escaneo encuentra campañas. Sin distinguirlos, cada sub-campaña se
         //    duplica como tarjeta propia del panel (el mismo problema que resolvia
         //    el guard de `break-words` en el DOM viejo).
@@ -1629,7 +1705,7 @@
         //    bajo a la tarjeta de sub-campaña.
 
         // Un grupo de juego del DOM nuevo. Se piden las DOS clases: la tarjeta de
-        // sub-campaña tambien es `bg-surface-base`, pero no es `rounded-2xl`.
+        // sub-campaña tambien lleva la clase de superficie, pero no es `rounded-2xl`.
         // Seccion del panel que alimenta la pestaña actual, o null si la ruta no lo
         // dice (DOM viejo, donde las secciones se separaban por <h1> en una sola pagina).
         function _routeStatus() {
@@ -1641,20 +1717,20 @@
 
         function _isNewGameGroup(node) {
             return !!node && node.classList &&
-                node.classList.contains('bg-surface-base') &&
+                _hasAnyClass(node, CLS_SURFACE) &&
                 node.classList.contains('rounded-2xl');
         }
 
         // Una tarjeta de sub-campaña del DOM nuevo. No basta con la clase del borde
-        // —`border-outline-decorative` es un token de diseño generico que el DOM
+        // —el borde de tarjeta es un token de diseño generico que el DOM
         // viejo tambien podria llevar, y dar por sub-campaña un acordeon viejo
         // borraria campañas reales del panel—: se exige ademas colgar de un grupo
         // `.rounded-2xl`, que es la forma que SOLO tiene el DOM nuevo.
         function _isNewCampaignCard(node) {
             if (!node || !node.classList || !node.closest) return false;
-            if (!node.classList.contains('border-outline-decorative')) return false;
+            if (!_hasAnyClass(node, CLS_CARD_BORDER)) return false;
             if (_isNewGameGroup(node)) return false;
-            return !!node.closest('.bg-surface-base.rounded-2xl');
+            return !!node.closest(SEL_GAME_GROUP);
         }
 
         // Los espacios se colapsan, no solo se recortan: Kick parte titulos y fechas
@@ -1783,7 +1859,7 @@
         function _dateRangeOf(node) {
             if (!node || !node.querySelector) return '';
             const el = node.querySelector('.text-neutral-300') ||
-                node.querySelector('p.text-surface-onSurfaceSecondary.text-sm');
+                node.querySelector(SEL_DATE_P);
             // Los espacios se colapsan, no solo se recortan por los bordes: Kick parte la
             // fecha en varias lineas dentro del <p>, y aunque en HTML eso no se ve, el
             // texto que se copia con el 🔗 es texto plano y se lleva el salto de linea a
@@ -5601,7 +5677,7 @@
             // barrido pasa por CADA `.bg-surface-base`, o sea tambien por las
             // tarjetas de sub-campaña, y aunque processCampaignNode las descarta, es
             // mejor no depender de ese descarte para no duplicar tarjetas del panel.
-            const newGameGroups = _dropsQuery('.bg-surface-base.rounded-2xl')
+            const newGameGroups = _dropsQuery(SEL_GAME_GROUP)
                 .filter(n => !_isInHiddenPanel(n));
             newGameGroups.forEach(group => {
                 processCampaignNode(group, Infinity, Infinity);
@@ -5622,7 +5698,7 @@
                 // If no accordion buttons, try finding direct campaign containers
                 if (accordionButtons.length === 0) {
                     // Try alternative: look for campaign containers inside group
-                    const campaignDivs = group.querySelectorAll('.bg-surface-base, [class*="bg-surface"]');
+                    const campaignDivs = group.querySelectorAll(SEL_SURFACE + ', [class*="bg-surface"]');
                     campaignDivs.forEach(div => {
                         processCampaignNode(div, closedHeaderY, upcomingHeaderY);
                     });
@@ -5651,7 +5727,7 @@
             // cuando no hay nada legitimo que encontrar.
             if (accordionGroups.length === 0 && newGameGroups.length === 0) {
                 // Fallback: scan all elements that look like campaign containers
-                const fallbackNodes = _dropsQuery('[data-state], .bg-surface-base');
+                const fallbackNodes = _dropsQuery('[data-state], ' + SEL_SURFACE);
                 fallbackNodes.forEach(node => {
                     if (_isInHiddenPanel(node)) return;
                     processCampaignNode(node, closedHeaderY, upcomingHeaderY);
@@ -5853,7 +5929,7 @@
             // verde acabaria alrededor de una sola sub-campaña en vez del juego.
             const innerCard = _isNewGameGroup(node)
                 ? node
-                : (node.querySelector('.bg-surface-base') || node);
+                : (node.querySelector(SEL_SURFACE) || node);
             const nodeStyle = isExpired ? EXPIRED_STYLE : (isUpcoming ? UPCOMING_STYLE : ACTIVE_STYLE);
             innerCard.setAttribute('style', (innerCard.getAttribute('style') || '') + ';' + nodeStyle);
 
@@ -5863,7 +5939,7 @@
                 const rewardItems = node.querySelectorAll('li');
                 rewardItems.forEach(li => {
                     const nameSpan = li.querySelector('span.text-sm.font-semibold, span[class*="font-semibold"]');
-                    const timeSpan = li.querySelector('span.text-surface-onSurfaceSecondary, span[class*="onSurfaceSecondary"]');
+                    const timeSpan = li.querySelector(SEL_TIME_SPAN);
                     const rwImg = li.querySelector('img');
                     if (nameSpan) {
                         rewards.push({
@@ -6116,7 +6192,7 @@
             svg.setAttribute('height', '20');
             svg.setAttribute('viewBox', '0 0 24 24');
             svg.setAttribute('fill', 'none');
-            svg.setAttribute('class', 'text-surface-onSurfaceSecondary');
+            svg.setAttribute('class', W_TEXT_SUBTLE);
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', 'M19.707 8.207 10 17.914l-6.207-6.207 1.414-1.414L10 15.086l8.293-8.293 1.414 1.414Z');
             path.setAttribute('fill', 'currentColor');
@@ -6202,10 +6278,10 @@
 
             const card = document.createElement('div');
             card.id = 'kick-daily-chest-card';
-            card.className = 'bg-surface-base flex flex-col rounded-lg overflow-hidden';
+            card.className = `${W_SURFACE} flex flex-col rounded-lg overflow-hidden`;
 
             const imgWrapper = document.createElement('div');
-            imgWrapper.className = 'relative aspect-square bg-surface-highest';
+            imgWrapper.className = `relative aspect-square ${W_SURFACE_HIGH}`;
             const img = document.createElement('img');
             img.alt = t.dailyRewardTitle || 'Daily reward';
             img.loading = 'lazy';
@@ -6257,12 +6333,12 @@
             const topRow = document.createElement('div');
             topRow.className = 'flex items-center justify-between';
             const left = document.createElement('span');
-            left.className = 'text-surface-onSurfaceSecondary text-xs';
+            left.className = `${W_TEXT_SUBTLE} text-xs`;
             left.textContent = claimed ? _timeAgo(c.claimed_at || '')
                 : (claimable ? '' : formatHoursMinutes(total - done));
             topRow.appendChild(left);
             const badge = document.createElement('div');
-            badge.className = 'flex items-center justify-center rounded bg-surface-highest px-1.5 py-0.5 text-xs text-white font-medium min-w-[20px]';
+            badge.className = `flex items-center justify-center rounded ${W_SURFACE_HIGH} px-1.5 py-0.5 text-xs text-white font-medium min-w-[20px]`;
             badge.textContent = claimed ? '1' : `${Math.min(done, total)}/${total}`;
             topRow.appendChild(badge);
             info.appendChild(topRow);
@@ -6274,7 +6350,7 @@
             card.appendChild(info);
 
             const sep = document.createElement('div');
-            sep.className = 'bg-outline-decorative h-px w-full';
+            sep.className = `${W_SEPARATOR} h-px w-full`;
             card.appendChild(sep);
 
             const footer = document.createElement('div');
@@ -6298,7 +6374,7 @@
             } else {
                 footer.className = 'flex items-center justify-center gap-1 px-2 py-2';
                 const nota = document.createElement('span');
-                nota.className = 'text-surface-onSurfaceSecondary text-center text-xs';
+                nota.className = `${W_TEXT_SUBTLE} text-center text-xs`;
                 // Solo con la casilla puesta: sin ella nadie va a reclamarlo por ti, y la
                 // frase seria justo lo contrario de lo que pasa. La baldosa se queda —los
                 // minutos que faltan siguen siendo ciertos—, callada.
@@ -6385,7 +6461,7 @@
                 }
             }
             if (!reclamadoSection) {
-                const groups = _dropsQuery('.bg-surface-base.rounded-2xl')
+                const groups = _dropsQuery(SEL_GAME_GROUP)
                     .filter(n => !n.parentElement || !_isInHiddenPanel(n.parentElement));
                 reclamadoSection = groups.length > 0 ? groups[groups.length - 1] : null;
             }
@@ -6439,11 +6515,11 @@
 
             for (const { reward, claimedAt } of allClaimed) {
                 const card = document.createElement('div');
-                card.className = 'bg-surface-base flex flex-col rounded-lg overflow-hidden';
+                card.className = `${W_SURFACE} flex flex-col rounded-lg overflow-hidden`;
 
                 // Image
                 const imgWrapper = document.createElement('div');
-                imgWrapper.className = 'relative aspect-square bg-surface-highest';
+                imgWrapper.className = `relative aspect-square ${W_SURFACE_HIGH}`;
                 const img = document.createElement('img');
                 img.alt = reward.name || '';
                 img.loading = 'lazy';
@@ -6461,12 +6537,12 @@
                 topRow.className = 'flex items-center justify-between';
 
                 const timeSpan = document.createElement('span');
-                timeSpan.className = 'text-surface-onSurfaceSecondary text-xs';
+                timeSpan.className = `${W_TEXT_SUBTLE} text-xs`;
                 timeSpan.textContent = _timeAgo(claimedAt);
                 topRow.appendChild(timeSpan);
 
                 const badge = document.createElement('div');
-                badge.className = 'flex items-center justify-center rounded bg-surface-highest px-1.5 py-0.5 text-xs text-white font-medium min-w-[20px]';
+                badge.className = `flex items-center justify-center rounded ${W_SURFACE_HIGH} px-1.5 py-0.5 text-xs text-white font-medium min-w-[20px]`;
                 badge.textContent = '1';
                 topRow.appendChild(badge);
 
@@ -6482,7 +6558,7 @@
 
                 // Separator
                 const sep = document.createElement('div');
-                sep.className = 'bg-outline-decorative h-px w-full';
+                sep.className = `${W_SEPARATOR} h-px w-full`;
                 card.appendChild(sep);
 
                 // Checkmark footer
@@ -6532,7 +6608,7 @@
         // la barra dicen las dos «reclamados», lo que esta delante es esto.
         function _hideKickClaimedBlocks() {
             if (!_claimedTabIsFront()) return;
-            _dropsQuery('.bg-surface-base.rounded-2xl').forEach(group => {
+            _dropsQuery(SEL_GAME_GROUP).forEach(group => {
                 if (group.closest('#kick-claimed-inventory')) return;
                 group.dataset.kickHidden = '1';
                 group.style.display = 'none';
@@ -6649,7 +6725,7 @@
         // como total daba "550 / 49 min · 1122%" y "restante 0m" en una campaña con
         // 550 min vistos de 600. Combina horas+minutos cuando vienen los dos.
         function _parseKickLiTime(li) {
-            const statusSpan = li.querySelector('.text-surface-onSurfaceSecondary');
+            const statusSpan = li.querySelector(SEL_TEXT_SUBTLE);
             const txt = statusSpan ? (statusSpan.textContent || '').toLowerCase() : '';
             let h = 0, m = 0;
             const mHours = txt.match(/(\d+(?:[.]\d+)?)\s*(?:hours?|horas?|stunden?|heures?|ore|godzin|h\b)/);
@@ -6683,7 +6759,7 @@
         }
 
         function _parsePercentFromKickLi(li) {
-            const statusSpan = li.querySelector('.text-surface-onSurfaceSecondary');
+            const statusSpan = li.querySelector(SEL_TEXT_SUBTLE);
             const txt = statusSpan ? (statusSpan.textContent || '') : '';
             const m = txt.match(/(\d+(?:[.]\d+)?)\s*%/);
             return m ? parseFloat(m[1].replace(',', '.')) : NaN;
@@ -6699,7 +6775,7 @@
         // generico [class*="font-bold"] dentro de la tarjeta da su <h2>, que es el
         // nombre de la sub-campaña; `.text-base.font-bold` es el del DOM viejo.
         function _findCampaignNameForKickLi(li) {
-            const container = li.closest('.border-outline-decorative') || li.closest('.bg-surface-base');
+            const container = li.closest(SEL_CARD_BORDER) || li.closest(SEL_SURFACE);
             if (!container) return '';
             const nameEl = container.querySelector('.text-base.font-bold') ||
                 container.querySelector('h2.font-bold') ||
@@ -6770,7 +6846,7 @@
             if (!_isCampaignsPage()) return;
             if (!cleanExpiredInventoryFlag) { _restoreKickClaimedBlocks(); return; }
             if (!_progressInventoryReady) return;
-            for (const group of _dropsQuery('.bg-surface-base.rounded-2xl')) {
+            for (const group of _dropsQuery(SEL_GAME_GROUP)) {
                 if (_isInHiddenPanel(group)) continue;
                 for (const li of group.querySelectorAll('li')) {
                     if (li.dataset.kickHidden) continue;
@@ -6778,7 +6854,7 @@
                     li.dataset.kickHidden = '1';
                     li.style.display = 'none';
                 }
-                for (const card of group.querySelectorAll('.border-outline-decorative')) {
+                for (const card of group.querySelectorAll(SEL_CARD_BORDER)) {
                     if (!_isNewCampaignCard(card)) continue;
                     const tiles = Array.from(card.querySelectorAll('li'));
                     if (tiles.length === 0 || !tiles.every(li => li.dataset.kickHidden)) continue;
@@ -7513,7 +7589,7 @@
                 // Fuera lo que cuelgue de una pestaña oculta: son campañas de otra
                 // seccion y reclamar o esconder ahi es actuar sobre lo que el usuario
                 // no esta viendo.
-                const campaignContainers = _dropsQuery('.bg-surface-base')
+                const campaignContainers = _dropsQuery(SEL_SURFACE)
                     .filter(n => !_isInHiddenPanel(n));
 
                 if (campaignContainers.length === 0 && attempts >= maxAttempts) {
@@ -7565,7 +7641,7 @@
 
                     dropItems.forEach(function (li) {
                         const progressBar = li.querySelector('[role="progressbar"]');
-                        const statusSpan = li.querySelector('.text-surface-onSurfaceSecondary');
+                        const statusSpan = li.querySelector(SEL_TEXT_SUBTLE);
                         const statusText = statusSpan ? statusSpan.textContent.trim().toLowerCase() : '';
 
                         if (progressBar) {
@@ -8166,7 +8242,7 @@
                 const campaignNodes = _dropsQuery(
                     '[data-orientation="vertical"] [data-state], ' +
                     '[data-orientation="vertical"] button, ' +
-                    '.bg-surface-base'
+                    SEL_SURFACE
                 );
 
                 campaignNodes.forEach((node) => {

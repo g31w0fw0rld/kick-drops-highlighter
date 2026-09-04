@@ -107,7 +107,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, dejarAbierta = false }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, dejarAbierta = false }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -232,9 +232,15 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // La propia pagina de Kick pide /drops/progress con su Bearer; asi es como el
     // script se enterra de lo reclamado. Se reproduce ese fetch para ejercitar el
     // interceptor de verdad y no un atajo.
+    // `progressMs` retrasa esa peticion. Por defecto va a 0 —o sea como estaba— porque
+    // el token en el instante cero es el caso comodo; el que no estaba cubierto es el
+    // otro: en el navegador, entrando directo a /drops/claimed, el script arranca en
+    // document-start y pide la rejilla ANTES de que Kick haya hecho ninguna peticion
+    // autenticada, asi que no hay token que interceptar todavia.
     if (progress) {
-        w.fetch('https://web.kick.com/api/v1/drops/progress',
+        const pedir = () => w.fetch('https://web.kick.com/api/v1/drops/progress',
             { headers: { Authorization: 'Bearer test' } });
+        if (progressMs > 0) setTimeout(pedir, progressMs); else pedir();
     }
     // Igual con el reto diario: la pagina de Kick pide este endpoint para su modal del
     // cofre, y el script lo aprovecha por el interceptor en vez de pedirlo aparte. Se
@@ -566,7 +572,11 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 id: n.id,
                 hidden: (() => { for (let e = n; e && e !== d.body; e = e.parentElement) if (e.style && e.style.display === 'none') return true; return false; })(),
                 isGroup: n.classList.contains('rounded-2xl'),
-                isCard: n.classList.contains('border-outline-decorative'),
+                // Las DOS generaciones de la clase: Kick la renombro en septiembre de
+                // 2026 y el script acepta ambas, asi que el informe tambien tiene que
+                // hacerlo o dice «no es tarjeta» de una tarjeta del DOM nuevo.
+                isCard: n.classList.contains('border-outline-decorative') ||
+                    n.classList.contains('border-surface-fg-decorative'),
                 styled: /border: 4px solid/.test(n.getAttribute('style') || '') ||
                     /border: 4px solid/.test((n.querySelector('[style*="border: 4px solid"]') ? 'x' : '')),
                 borderColor: ((n.getAttribute('style') || '').match(/border: 4px solid (#\w+)/) || [])[1] || null,
