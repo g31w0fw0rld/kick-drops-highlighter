@@ -1,0 +1,298 @@
+{
+  "_nota": "EXTRACTO de la respuesta de https://web.kick.com/api/v1/drops/campaigns (2026-09-06), no la respuesta entera: llego por el chat en dos trozos y reconstruirla a mano campaña a campaña —eran 14, con unos 40 canales— es justo donde se cuelan los errores de transcripcion. Se guardan CUATRO campañas elegidas por lo que cada una demuestra, con su forma intacta. Lo que se quito: las otras diez (todas con la forma de las 'Team ...' que si esta aqui) y, de las que quedan, casi todos los `channels` —de ahi salia el 90% del volumen y todo el dato personal de terceros: nombres, ids, fotos y descripciones de canal, una de ellas con un correo particular dentro—. De los canales que se dejan, la `description` va vacia por lo mismo. Para el estado de reclamado esta el otro volcado: api-drops-progress-expired-2026-09.json.",
+  "data": [
+    {
+      "channels": [],
+      "connect_url": "",
+      "created_at": "2026-04-28T00:18:34.058846Z",
+      "ends_at": "2026-05-06T00:00:00Z",
+      "id": "01KQ8Q7CY3HF58ZQAF7EMG208E",
+      "name": "ED'S DROP",
+      "organization": {
+        "email_notification": false,
+        "id": "01KMEZECC7J84MM299GH89Y8W4",
+        "logo_url": "https://ext.kick.com/drops/organization/kickdrops.png",
+        "name": "KICK",
+        "restricted": false,
+        "url": ""
+      },
+      "rewards": [
+        {
+          "category_id": 0,
+          "id": "01KQ8PJRYMCV37T6R06PNMKCH0",
+          "image_url": "drops/reward-image/01kq8pjrymcv37t6r06pnmkch0-01kq8pjrymcv37t6r06ss5xb3s.png",
+          "name": "x1 entry",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 60
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PM37SSXJHNFVTR3HEPCBF",
+          "image_url": "drops/reward-image/01kq8pm37ssxjhnfvtr3hepcbf-01kq8pm37ssxjhnfvtr59n5vez.png",
+          "name": "x1 entry",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 120
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PMMVB2H99JFG4W8NQAYDC",
+          "image_url": "drops/reward-image/01kq8pmmvb2h99jfg4w8nqaydc-01kq8pmmvb2h99jfg4w8yvrhs1.png",
+          "name": "x1 entry",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 180
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PN3V5GT7DD19VY68MSP8C",
+          "image_url": "drops/reward-image/01kq8pn3v5gt7dd19vy68msp8c-01kq8pn3v5gt7dd19vy7byfjdv.png",
+          "name": "x1 entry",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 240
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PRQ913JMQXXYES854N4R4",
+          "image_url": "drops/reward-image/01kq8prq913jmqxxyes854n4r4-01kq8prq913jmqxxyesb6x7nf1.png",
+          "name": "x5 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 300
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PTD4D6N606D5VNG9MVQS5",
+          "image_url": "drops/reward-image/01kq8ptd4d6n606d5vng9mvqs5-01kq8ptd4d6n606d5vnky41y1k.png",
+          "name": "x10 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 600
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PV1YEW3CQVPKVDZC3B5BR",
+          "image_url": "drops/reward-image/01kq8pv1yew3cqvpkvdzc3b5br-01kq8pv1yew3cqvpkve25gjgkd.png",
+          "name": "x10 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 900
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PVMJC5Y7KZJZPYXA60F9Q",
+          "image_url": "drops/reward-image/01kq8pvmjc5y7kzjzpyxa60f9q-01kq8pvmjc5y7kzjzpyzsq5atf.png",
+          "name": "x10 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 1200
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PW100F6CR866V0EE612RT",
+          "image_url": "drops/reward-image/01kq8pw100f6cr866v0ee612rt-01kq8pw100f6cr866v0fedq5jp.png",
+          "name": "x10 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 1500
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PWJJ9YR0GJPEJ392N3KQ8",
+          "image_url": "drops/reward-image/01kq8pwjj9yr0gjpej392n3kq8-01kq8pwjj9yr0gjpej3ahgktk4.png",
+          "name": "x10 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 1800
+        },
+        {
+          "category_id": 0,
+          "id": "01KQ8PWYR0P43QDDZZJ147THSW",
+          "image_url": "drops/reward-image/01kq8pwyr0p43qddzzj147thsw-01kq8pwyr0p43qddzzj24r4zyg.png",
+          "name": "x10 entries",
+          "organization_id": "01KMEZECC7J84MM299GH89Y8W4",
+          "required_units": 2100
+        }
+      ],
+      "rule": {
+        "id": 1,
+        "name": "Watch to redeem"
+      },
+      "starts_at": "2026-04-29T00:00:00Z",
+      "status": "expired",
+      "updated_at": "2026-04-28T02:15:28.368488Z",
+      "url": "https://about.kick.com/news-and-press/7-kicks-drop-is-here-watch-earn-entries-and-win-kicks"
+    },
+    {
+      "category": {
+        "banner_image_url": "",
+        "id": 13,
+        "image_url": "https://files.kick.com/images/subcategories/13/banner/77786fd4-4f33-4221-b8ee-2bf3cb4d041e",
+        "name": "Rust",
+        "slug": "rust"
+      },
+      "channels": [
+        {
+          "banner_picture_url": "",
+          "description": "",
+          "id": 6843639,
+          "slug": "kick",
+          "user": {
+            "id": 6937907,
+            "profile_picture": "",
+            "username": "KICK"
+          }
+        }
+      ],
+      "connect_url": "https://kick.facepunch.com",
+      "created_at": "2026-06-02T19:11:58.655604Z",
+      "ends_at": "2026-06-15T03:00:00Z",
+      "id": "01KT4VZWMRS0DS4KC2PNXE63ED",
+      "name": "Kick + Rust Wallpaper Pack",
+      "organization": {
+        "email_notification": false,
+        "id": "01K6WKP5BBMPZJ89G5Y7QK1E9P",
+        "logo_url": "https://ext.cdn.kick.com/drops/organization/facepunchdrops.png",
+        "name": "Facepunch Studios",
+        "restricted": false,
+        "url": "https://kick.facepunch.com"
+      },
+      "rewards": [
+        {
+          "category_id": 13,
+          "id": "01KT4V2H4STV35E91NAA9NJWSC",
+          "image_url": "drops/reward-image/01kt4v2h4stv35e91naa9njwsc-01kt4v2h4stv35e91nabzqrxwz.png",
+          "name": "Kick + Rust Wallpaper Pattern",
+          "organization_id": "01K6WKP5BBMPZJ89G5Y7QK1E9P",
+          "required_units": 120
+        },
+        {
+          "category_id": 13,
+          "id": "01KT4V3V0A3EHQQFVMKYR68YXY",
+          "image_url": "drops/reward-image/01kt4v3v0a3ehqqfvmkyr68yxy-01kt4v3v0a3ehqqfvmkzyz25d4.png",
+          "name": "Kick + Rust Wallpaper Logo",
+          "organization_id": "01K6WKP5BBMPZJ89G5Y7QK1E9P",
+          "required_units": 60
+        }
+      ],
+      "rule": {
+        "id": 1,
+        "name": "Watch to redeem"
+      },
+      "starts_at": "2026-06-11T19:45:00Z",
+      "status": "expired",
+      "updated_at": "2026-06-03T16:20:21.583817Z",
+      "url": "https://kick.facepunch.com/"
+    },
+    {
+      "category": {
+        "banner_image_url": "",
+        "id": 13,
+        "image_url": "https://files.kick.com/images/subcategories/13/banner/77786fd4-4f33-4221-b8ee-2bf3cb4d041e",
+        "name": "Rust",
+        "slug": "rust"
+      },
+      "channels": [
+        {
+          "banner_picture_url": "",
+          "description": "",
+          "id": 62294,
+          "slug": "sinks",
+          "user": {
+            "id": 62851,
+            "profile_picture": "",
+            "username": "sinks"
+          }
+        },
+        {
+          "banner_picture_url": "",
+          "description": "",
+          "id": 83751293,
+          "slug": "willjum",
+          "user": {
+            "id": 84945127,
+            "profile_picture": "",
+            "username": "Willjum"
+          }
+        }
+      ],
+      "connect_url": "https://kick.facepunch.com",
+      "created_at": "2026-06-02T20:49:05.401293Z",
+      "ends_at": "2026-06-21T23:00:00Z",
+      "id": "01KT51HPTH6GNXRT0PDMWDVQWC",
+      "name": "Team Willjum + Sinks Crossbow",
+      "organization": {
+        "email_notification": false,
+        "id": "01K6WKP5BBMPZJ89G5Y7QK1E9P",
+        "logo_url": "https://ext.cdn.kick.com/drops/organization/facepunchdrops.png",
+        "name": "Facepunch Studios",
+        "restricted": false,
+        "url": "https://kick.facepunch.com"
+      },
+      "rewards": [
+        {
+          "category_id": 13,
+          "id": "01KT4T3RW3D45A61BCB7422BE6",
+          "image_url": "drops/reward-image/01kt4t3rw3d45a61bcb7422be6-01kt4t3rw3d45a61bcbb1hxtmh.png",
+          "name": "Team Willjum + Sinks Crossbow",
+          "organization_id": "01K6WKP5BBMPZJ89G5Y7QK1E9P",
+          "required_units": 120
+        }
+      ],
+      "rule": {
+        "id": 1,
+        "name": "Watch to redeem"
+      },
+      "starts_at": "2026-06-11T20:00:00Z",
+      "status": "expired",
+      "updated_at": "2026-06-03T16:23:19.076269Z",
+      "url": "https://kick.facepunch.com/"
+    },
+    {
+      "category": {
+        "banner_image_url": "",
+        "id": 111,
+        "image_url": "https://files.kick.com/images/subcategories/111/banner/f4bf565f-4258-4220-b568-2d52ae64c56b",
+        "name": "Old School RuneScape",
+        "slug": "old-school-runescape"
+      },
+      "channels": [
+        {
+          "banner_picture_url": "",
+          "description": "",
+          "id": 1346264,
+          "slug": "vanc",
+          "user": {
+            "id": 1390182,
+            "profile_picture": "",
+            "username": "VANC"
+          }
+        }
+      ],
+      "connect_url": "",
+      "created_at": "2026-07-23T04:22:45.54266Z",
+      "ends_at": "2026-07-27T05:59:00Z",
+      "id": "01KY6KCAZXYR9FAB5YZJD9A0QN",
+      "name": "Armadyl Godsword Badge Drop",
+      "organization": {
+        "email_notification": false,
+        "id": "01KXMWYVHG1T5BWKTHBQ9R5RXV",
+        "logo_url": "https://ext.kick.com/drops/organization/jagexdrops.png",
+        "name": "Jagex",
+        "restricted": false,
+        "url": "https://www.jagex.com/"
+      },
+      "rewards": [
+        {
+          "category_id": 111,
+          "id": "01KY6JMM34QM4JQDPCKXDMTCH4",
+          "image_url": "drops/reward-image/01ky6jmm34qm4jqdpckxdmtch4-01ky6jmm34qm4jqdpcky7t4qk3.png",
+          "name": "RS Armadyl Godsword Badge",
+          "organization_id": "01KXMWYVHG1T5BWKTHBQ9R5RXV",
+          "required_units": 180
+        }
+      ],
+      "rule": {
+        "id": 1,
+        "name": "Watch to redeem"
+      },
+      "starts_at": "2026-07-25T18:00:00Z",
+      "status": "expired",
+      "updated_at": "2026-07-24T18:14:34.23937Z",
+      "url": "https://x.com/kick/status/2080717651912057104"
+    }
+  ],
+  "message": "Success"
+}

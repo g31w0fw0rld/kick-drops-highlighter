@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.7
+// @version      1.3.8
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -2672,21 +2672,94 @@
         // los dos. Se asume: perder una baldosa repetida es menos grave que dejar
         // colgada la que ya tienes, que es lo que se pidio esconder. Para lo que decide
         // de verdad —el ✓ del panel, el 🎁, los filtros— se sigue usando el id.
+        //
+        // Y el nombre de la CAMPAÑA tampoco distingue ediciones, que es de donde salia
+        // el fallo gordo: con lo cobrado en la edicion del año pasado se escondian sus
+        // dos baldosas de este —una de ellas sin reclamar—, o sea la campaña entera. Por
+        // eso el indice se construye solo con las vigentes y unicas; ver
+        // _buildClaimedRewardIndex, que explica por que se acota asi y no por id.
         let _claimedRewardNames = {};
+
+        // Una campaña de /drops/progress que TODAVIA no cerro.
+        //
+        // Se miran las DOS señales que manda, y basta una para darla por cerrada: el
+        // `status` —que llega literalmente `"expired"`— y `ends_at`. Verificado el
+        // 2026-09-06 con la respuesta real, guardada en
+        // `docs/api-drops-progress-expired-2026-09.json`: sus catorce campañas traen
+        // `id`, `status`, `starts_at` y `ends_at`, y las catorce son `expired` con la
+        // fecha ya pasada, asi que las dos señales coinciden y ninguna hay que
+        // deducirla. Se leen las dos porque no cuesta nada y son independientes: un
+        // `status` que no conozcamos no deja esto ciego mientras haya fecha.
+        //
+        // De ese volcado salen ademas dos cosas que valen para todo el fichero: que el
+        // `id` de la campaña SI existe aqui —pero no en el DOM, que es lo que obliga a
+        // cruzar por nombre— y que `external_id` es del socio («11563»,
+        // «2026pgs9drops_18100453») mientras que `id` es un ULID de Kick, que es
+        // justamente por lo que este script no lee nunca `external_id`.
+        //
+        // Sin ninguna de las dos se toma por vigente, que es la direccion segura para
+        // lo de abajo: deja el nombre en duda en vez de resolverlo a favor de una.
+        function _campanaVigente(c) {
+            if (String((c && c.status) || '').toLowerCase() === 'expired') return false;
+            const end = Date.parse((c && c.ends_at) || '');
+            return !Number.isFinite(end) || end > Date.now();
+        }
 
         function _buildClaimedRewardIndex() {
             const claimed = new Set();
             const earned = new Set();
             const byName = {};
+            // QUE CAMPAÑAS PUEDE ESTAR MIRANDO LA PAGINA, y cuantas comparten nombre.
+            //
+            // El indice por nombre tiene el mismo punto ciego que tenia el cruce por
+            // benefit en Twitch: una campaña que vuelve cada temporada se llama IGUAL
+            // en las dos ediciones, y sus recompensas tambien. `/drops/progress` trae
+            // las viejas —de ahi sale la pestaña de reclamados—, asi que lo cobrado el
+            // año pasado escondia la baldosa de este.
+            //
+            // No se acota por id porque el DOM no da ninguno: los `<li>` de recompensa
+            // solo traen imagen y nombre, y el nombre de la campaña sale de la tarjeta
+            // que los contiene (`_findCampaignNameForKickLi`). Asi que se acota con lo
+            // que hay, y son DOS reglas con distinto peso:
+            //
+            //   · UNICIDAD, que es la que sostiene esto. Si un nombre aparece en mas
+            //     de una campaña, no distingue nada y no se indexa ninguna: no se
+            //     esconde, que es la regla de siempre —lo que no se puede juzgar se
+            //     deja a la vista—.
+            //   · VIGENCIA, que afina cuando se puede: este barrido corre SOLO en la
+            //     pestaña de campañas, que enseña las abiertas, asi que una edicion ya
+            //     cerrada no puede ser la que esta en pantalla y descartarla deja el
+            //     nombre libre para la de este año, que si se esconde bien.
+            //
+            // Que la segunda sirve esta VERIFICADO con la respuesta real (2026-09-06):
+            // /drops/progress manda `status`, `starts_at` y `ends_at` por campaña. Se
+            // llego a dar por lo contrario mirando el fixture de
+            // `test-expiradas-reclamadas` —sus campañas van con `name`, `progress_units`
+            // y `rewards` y nada mas—, pero eso es un fixture recortado a lo que ese
+            // test usa, no la forma del dato.
+            //
+            // Las dos reglas se quedan igual, porque cubren cosas distintas: la unicidad
+            // sostiene el caso aunque un dia dejen de llegar las fechas, y no cuesta
+            // nada. El test lleva las dos formas, con fechas y sin ellas.
+            const vivas = {};
+            for (const c of _interceptedAllCampaigns) {
+                if (!_campanaVigente(c)) continue;
+                const k = _fold(_collapse(c && c.name).toLowerCase());
+                if (k) vivas[k] = (vivas[k] || 0) + 1;
+            }
             for (const c of _interceptedAllCampaigns) {
                 const watched = Number(c && c.progress_units) || 0;
                 const campKey = _fold(_collapse(c && c.name).toLowerCase());
+                // Solo el indice por NOMBRE se acota. El de ids —que es el que decide
+                // el ✓ del panel, el 🎁, los filtros y el orden— sigue mirandolas
+                // todas: ahi el `id` de la reward es unico y no hay nada que confundir.
+                const aportaNombres = !!campKey && vivas[campKey] === 1 && _campanaVigente(c);
                 for (const r of (c && c.rewards) || []) {
                     if (!r || !r.id) continue;
                     if (r.claimed) {
                         claimed.add(r.id);
                         const n = _fold(_collapse(r.name).toLowerCase());
-                        if (campKey && n) (byName[campKey] || (byName[campKey] = new Set())).add(n);
+                        if (aportaNombres && n) (byName[campKey] || (byName[campKey] = new Set())).add(n);
                         continue;
                     }
                     // Dos fuentes para lo mismo, en OR: el `progress` (0..1) que da la
@@ -6798,10 +6871,40 @@
         // reward concreta se busca por (name + required_units) al resolver.
         let _kickCampaigns = {};
 
+        // El nombre tampoco distingue ediciones AQUI, y es el mismo punto ciego que en
+        // `_claimedRewardNames`: una campaña que vuelve cada temporada se llama igual, y
+        // como esto se llenaba en un bucle, ganaba la ULTIMA del array sin ningun
+        // criterio. Si ganaba la vieja —completada, con sus minutos altos y todo
+        // reclamado—, el error iba en la direccion mala: «no te falta tiempo» sobre una
+        // campaña en la que no has visto nada.
+        //
+        // Se descarta lo ambiguo en vez de elegir a ojo, y aqui eso no apaga nada: los
+        // dos consumidores YA tienen a donde caer cuando no hay campaña, y caen a un
+        // dato mas pobre pero honesto. `_resolveKickProgress` saca el total de la BARRA
+        // del propio DOM —lo que el usuario tiene delante— y `_watchedMinutesFor`
+        // devuelve 0, o sea «te faltan todos los minutos», que es el lado bueno del
+        // error: hace ver de mas, no perder un drop.
+        //
+        // La vigencia entra SOLO como desempate y no como filtro general: hoy el mapa
+        // lleva tambien las cerradas y hay pestañas que las consultan, asi que un nombre
+        // que no se repite se indexa como siempre, cerrada o no. Solo cambia lo que
+        // estaba roto. Y no es una precaucion teorica: en la respuesta real del
+        // 2026-09-06 las catorce campañas del historial llegan `expired`, asi que la
+        // vigencia como filtro general habria vaciado el mapa entero.
         function _buildKickProgressMap() {
             _kickCampaigns = {};
+            const veces = {};
+            const vivas = {};
             for (const c of _interceptedAllCampaigns) {
                 if (!c || !c.name) continue;
+                veces[c.name] = (veces[c.name] || 0) + 1;
+                if (_campanaVigente(c)) vivas[c.name] = (vivas[c.name] || 0) + 1;
+            }
+            for (const c of _interceptedAllCampaigns) {
+                if (!c || !c.name) continue;
+                // Nombre compartido: solo se queda la que sea LA UNICA vigente de las
+                // que lo comparten. Sin esa, ninguna.
+                if (veces[c.name] > 1 && !(_campanaVigente(c) && vivas[c.name] === 1)) continue;
                 _kickCampaigns[c.name] = {
                     progress_units: Number(c.progress_units) || 0,
                     rewards: (c.rewards || []).filter(r => r && !r.claimed)
