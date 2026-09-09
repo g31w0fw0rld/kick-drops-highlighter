@@ -69,6 +69,26 @@ const apiCampaigns = [{
             (rc.banner.texto || '') + '"');
     }
 
+    // --- Una pestaña DESCONOCIDA: igual, y por el mismo motivo -----------------------
+    // /drops/rewards no se escanea a proposito (ver test-pestana-desconocida), asi que
+    // le pasaba exactamente lo que a reclamados en agosto: nadie levanta la bandera y el
+    // cartel se queda diciendo «Buscando...» sobre una pagina donde no se busca nada.
+    // Es el mismo fallo con otra ruta, y por eso el arreglo tenia que ser el mismo: la
+    // pestaña que no se escanea tambien cierra su revision.
+    const rw = await run({
+        url: 'https://kick.com/drops/rewards',
+        panels: [{ hidden: false, html: readFixture('fixture-rewards.html') }],
+        apiCampaigns, waitMs: 14000,
+        seed: { kick_drop_keywords: JSON.stringify(['rust']) }
+    });
+
+    console.log(JSON.stringify({ enRecompensas: rw.banner }, null, 2));
+
+    if (rw.banner && rw.banner.visible) {
+        fallos.push('en una pestaña desconocida el cartel se queda encendido para siempre: "' +
+            (rw.banner.texto || '') + '"');
+    }
+
     console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
     process.exit(0);
 })().catch(e => { console.error('FALLO', e); process.exit(1); });

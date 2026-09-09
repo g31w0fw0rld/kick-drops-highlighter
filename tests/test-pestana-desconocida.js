@@ -58,6 +58,42 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok   ' : '  FALLA') + ' ' 
     comprobar(nav.active.length === 0, 'sigue sin inventarse nada — ' + JSON.stringify(nav.active.map(x => x.title)));
     comprobar(nav.matches.length === 0, 'y sin marcar nada — ' + nav.matches.length + ' nodo(s)');
 
+    // 4. Y LO QUE COSTABA DE VERDAD: el cofre diario. No escanear estaba bien; lo que
+    // estaba mal es que el `return` se saltara el cierre de la revision.
+    // `_dropsReviewInProgress` se pone a true al entrar y solo lo baja
+    // `_finishDropsReview`, asi que quedandose arriba `_checkDailyReward` se abstiene en
+    // todas sus vueltas: estando en esta pestaña la recompensa diaria NO se reclama.
+    // El interval de respaldo es de 3 minutos, o sea que dentro de la ventana del test
+    // —y de la paciencia de cualquiera— el unico disparo es el del cierre.
+    //
+    // Va con control positivo en el MISMO fichero y con los mismos datos: sin el, un
+    // cero se explicaria igual porque el cofre no se pueda pulsar en el arnes.
+    const cofreOpts = {
+        cofre: 'disponible',
+        challenges: [{
+            recurrence: 'daily', status: 'claimable',
+            condition: { type: 'watch_time_minutes', progress: 60, threshold: 60 },
+            window: {
+                starts_at: new Date(Date.now() - 6 * 3600e3).toISOString(),
+                ends_at: new Date(Date.now() + 6 * 3600e3).toISOString()
+            }
+        }],
+        seed: { ...seed, kick_show_hide_inventory_expired: true },
+        panels: [{ hidden: false, html: rewards }],
+        apiCampaigns: []
+    };
+    const pulsaElCofre = r => (r.botonesPulsados || []).some(b => /daily reward/i.test(b || ''));
+
+    console.log('\n=== control: el cofre se reclama en una pestaña conocida ===');
+    const cofreCtrl = await run({ ...cofreOpts, url: 'https://kick.com/drops/campaigns', waitMs: 20000 });
+    comprobar(pulsaElCofre(cofreCtrl),
+        'en campañas se pulsa el cofre — ' + JSON.stringify(cofreCtrl.botonesPulsados));
+
+    console.log('\n=== el cofre TAMBIEN se reclama en /drops/rewards ===');
+    const cofreRw = await run({ ...cofreOpts, url: 'https://kick.com/drops/rewards', waitMs: 20000 });
+    comprobar(pulsaElCofre(cofreRw),
+        'la revision se cierra y el cofre se pulsa — ' + JSON.stringify(cofreRw.botonesPulsados));
+
     console.log(fallos === 0 ? '\nTODO EN VERDE' : '\n' + fallos + ' COMPROBACIONES EN ROJO');
     process.exit(fallos === 0 ? 0 : 1);
 })();

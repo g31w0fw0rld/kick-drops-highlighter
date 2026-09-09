@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.9
+// @version      1.3.10
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.9";
+    const SCRIPT_VERSION = "1.3.10";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -5901,6 +5901,20 @@
             // API (ver _apiEntryForCard). Lo que NO admite segunda opinion es una
             // negativa sobre el texto de la fila: ahi se descarta aunque la entrada de la
             // API hubiera pasado el filtro, porque «no quiero esto» es una orden.
+            //
+            // CONSECUENCIA CONOCIDA, y se deja asi a proposito (2026-09-08): preguntando
+            // solo al fallar, una campaña que casa por las DOS vias se explica distinto
+            // segun de donde salga su tarjeta. Rust es el caso —sus sub-campañas se
+            // llaman «Kick + Rust Wallpaper Pack», asi que casa por `rust` y por `kick`,
+            // pero la fila dice «Rust - Facepunch Studios» y ahi `kick` no esta—: dos
+            // chips en la solapa que se llena de la API, uno solo en la pestaña que
+            // tienes delante. Se noto en cerradas porque hasta que Kick estreno
+            // /drops/expired solo podian venir de la API.
+            //
+            // Preguntar siempre valdria —`apiEntry` solo alimenta `matchedKeywords`— pero
+            // seria tocar los dos scripts para una etiqueta de mas. Lo que se hizo en su
+            // lugar fue explicar los dos escenarios en el README, con una captura de cada
+            // uno. Si algun dia se cambia, que sea en Twitch y en Kick a la vez.
             let apiEntry = null;
             if (!_matchesKeywords(searchText)) {
                 if (_hasNegativeKeyword(searchText)) return;
@@ -8445,7 +8459,33 @@
             // «rewards» en las pistas la clasificaria como una seccion de campañas, que
             // es justo lo que no es. Lo que se hace es que el arranque diga lo mismo que
             // ya decia la navegacion.
-            if (!tab) return;
+            //
+            // PERO NO SE ESCANEA NO ES NO SE HACE NADA, y ese `return` a secas dejaba
+            // TRES cosas colgadas para siempre (reportado el 2026-09-08 en
+            // /drops/rewards, con el panel enseñando las tres a la vez):
+            //
+            //   1. `_dropsReviewInProgress` se pone a true al entrar aqui y solo lo baja
+            //      `_finishDropsReview`. Sin bajarlo, `_checkDailyReward` se abstiene en
+            //      todas sus vueltas y el COFRE DIARIO NO SE RECLAMA mientras estes en
+            //      esta pestaña. Es lo mas caro de las tres: se pierde algo.
+            //   2. `_dropsScanDone` se queda en false, asi que el cartel naranja del
+            //      panel dice «Buscando...» eternamente sobre una pagina donde no se esta
+            //      buscando nada. Es el mismo fallo que ya se arreglo el 2026-08-22 en
+            //      reclamados, por el mismo motivo: solo el escaneo levanta esa bandera.
+            //   3. `_ensureProgressData()` cuelga del escaneo, asi que aqui no se pedia
+            //      NUNCA: de ahi el aviso de «sin inventario» fijo y las tarjetas de la
+            //      API sin sus ✓. Y esa peticion no depende de la pagina —va con el token
+            //      por su cuenta—, o sea que no habia ninguna razon para no hacerla.
+            //
+            // Lo que hay que hacer en una pestaña desconocida no es callarse: es cerrar
+            // la revision como la cierra cualquier otra, sin tocar la pagina.
+            if (!tab) {
+                _dropsScanDone = true;
+                _updateApiLoadingBanner();
+                _ensureProgressData();
+                _finishDropsReview();
+                return;
+            }
             _startDropsPolling();
         }
 
