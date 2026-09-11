@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.10
+// @version      1.3.11
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.10";
+    const SCRIPT_VERSION = "1.3.11";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -4835,16 +4835,36 @@
         // asi que los dos primeros fallaban y se acababa mandando a "cambiar de pestaña"
         // a alguien que ya estaba en ella. El resultado era pulsar «Football Drop:
         // Jungle Jersey - KICK» estando en cerradas y no ir a ningun sitio.
+        //
+        // Y el tercero es tambien el que se pasaba de listo, que es el fallo de ahora:
+        // busca un ENCABEZADO QUE SE LLAME ASI, y el nombre propio de un grupo es el del
+        // JUEGO. Un juego con campañas en dos estados —lo normal en las de KICK, que
+        // tiene abiertas y cerradas a la vez— escribe el mismo «KICK» en las dos
+        // paginas, asi que pulsar la cerrada estando en abiertas encontraba el titulo
+        // del grupo ABIERTO, hacia scroll hasta el y daba por hecho el trabajo: nunca se
+        // cambiaba de pestaña. Se veia como "a veces el clic no lleva a ningun sitio", y
+        // el "a veces" era justo esto: falla solo cuando la pagina que tienes delante
+        // trae el mismo nombre de juego. Comprobado tambien en reclamados, que agrupa
+        // por juego igual.
+        //
+        // Por eso el nombre solo vale EN LA PAGINA DONDE VIVE la campaña (_pageShowsCampaign).
+        // Los dos primeros intentos no necesitan esa cautela: el nodo escaneado es de
+        // ESTA pagina por construccion. Lo que si se les añade es que el nodo se VEA:
+        // Kick deja montadas las pestañas inactivas con display:none, y a un nodo
+        // escondido no se llega haciendo scroll —seria decir que si con la pantalla
+        // igual—, asi que ahi es mejor contestar que no esta y cambiar de pestaña.
         function _focusCampaignOnPage(campaign) {
             if (!campaign) return false;
-            if (campaign.element && document.contains(campaign.element)) {
+            if (campaign.element && document.contains(campaign.element) &&
+                !_isInHiddenPanel(campaign.element)) {
                 scrollToCampaignElement(campaign.element);
                 return true;
             }
             if (campaign.id) {
                 const byId = document.getElementById(campaign.id);
-                if (byId) { scrollToCampaignElement(byId); return true; }
+                if (byId && !_isInHiddenPanel(byId)) { scrollToCampaignElement(byId); return true; }
             }
+            if (!_pageShowsCampaign(campaign)) return false;
             // El titulo de la tarjeta es "<lo suyo> - <organizacion>", asi que su nombre
             // propio es lo de delante: para el grupo es el juego ("KICK") y para la
             // sub-campaña su nombre ("Football Drop: Jungle Jersey"). Los dos son un
@@ -4853,6 +4873,26 @@
             const node = _findPageNodeByCampaignName(propio);
             if (node) { scrollToCampaignElement(node); return true; }
             return false;
+        }
+
+        // ¿Puede esta campaña estar en la pagina que hay delante? Es una pregunta de
+        // RUTA, no de DOM: en el diseño de ahora cada pestaña lista un solo estado, asi
+        // que una cerrada no puede estar en abiertas por mucho que el juego se llame
+        // igual en las dos.
+        //
+        // Dos salidas antes de comparar:
+        //   · Reclamados no lista ninguno de los tres estados —son las recompensas que ya
+        //     recogiste, agrupadas por juego—, asi que ahi la respuesta es no siempre.
+        //     Sin esto, estando en reclamados el clic se quedaba enfocando el grupo del
+        //     mismo juego en vez de llevarte a la campaña.
+        //   · Sin estado de ruta (_routeStatus a null) es el DOM VIEJO, donde las tres
+        //     secciones convivian en /drops/all-campaigns: ahi cualquier campaña puede
+        //     estar en la pagina y la busqueda por nombre sigue valiendo como hasta hoy.
+        function _pageShowsCampaign(campaign) {
+            if (_isClaimedPage()) return false;
+            const soloEste = _routeStatus();
+            if (!soloEste) return true;
+            return soloEste === ((campaign && campaign.status) || 'active');
         }
 
         function _goToCampaignTab(campaign) {
@@ -4886,7 +4926,11 @@
             const wanted = _fold(String(target.title).toLowerCase());
             const found = (items || []).find(c =>
                 c && c.element && _fold(String(c.title || '').toLowerCase()) === wanted);
-            _focusCampaignOnPage(found || { title: target.title });
+            // El estado viaja con el destino y se le devuelve aqui: sin el,
+            // _pageShowsCampaign no sabria de que pestaña es esta campaña y daria por
+            // buena la salida por defecto ('active'), que en cerradas o en proximas
+            // cerraria la busqueda por nombre justo al llegar.
+            _focusCampaignOnPage(found || { title: target.title, status: target.status });
         }
 
         // Busca en la pagina el encabezado que se llama EXACTAMENTE asi. Sirve para las

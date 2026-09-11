@@ -51,6 +51,7 @@ pide tiene que salir él mismo.
 | `test-cambio-pestana.js` | Navegando de verdad (pushState): que se marque al **llegar** a cerradas y a abiertas, y que enfoque una **sub-campaña** |
 | `test-foco-en-la-pagina.js` | Estando YA en la pestaña: cada tarjeta deja **su propio título** arriba —no el bloque que lo contiene— y no cambia de pestaña |
 | `test-foco-entre-pestanas.js` | Pulsar una tarjeta de otra pestaña: ida (destino guardado + pestaña correcta) y vuelta (scroll + destino consumido), en cerradas y en próximas |
+| `test-foco-mismo-juego.js` | Que la búsqueda por nombre **no cruce de pestaña**: con el grupo «Rust» delante en abiertas, próximas y reclamados, pulsar otra campaña de Rust lleva a **su** pestaña en vez de enfocar el grupo que hay aquí. Con control positivo: dentro de su propia pestaña, la sub-campaña se sigue encontrando por nombre |
 | `test-fuera-del-dom.js` | Que **solo** se lea dentro del `<main>` de drops: con las tres pestañas vacías, ni la barra lateral en el panel ni una marca fuera |
 | `test-casa-por-la-campana.js` | La campaña que casa por algo que la fila no enseña: se marca, dice por qué, avisa, y no se borra al añadir otra keyword — con el cruce exacto y la negativa mandando |
 | `test-racha-diaria.js` | El recordatorio del cofre diario: sale sin empezar y a medias, calla cumplido / con `status` desconocido / con otro tipo de reto, y la × lo silencia solo hasta mañana |
