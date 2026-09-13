@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.11
+// @version      1.3.12
 // @description  Highlights the Kick drop campaigns matching your keywords, and lists them in a panel split into active, upcoming and expired. Rewards you own are ticked, one earned but not collected gets a gift, and every open card shows the watch time left. Sort by closing date or cheapest, trim with four filters, exclude with keywords starting with "-". Copy an open or upcoming campaign as text. Optional auto-claim of finished drops and the daily chest. Hides what you claimed. 16 languages, read-only API.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.11";
+    const SCRIPT_VERSION = "1.3.12";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -6615,23 +6615,38 @@
             }
             card.appendChild(footer);
 
-            // Y mientras se acumula, la baldosa se comporta como una fila de progreso de
-            // Kick: el aviso con lo que falta —que lo pinta el motor de tooltips propio
-            // leyendo este `title`, y sale ENCIMA porque la tarjeta vive en la pagina y
-            // no en el panel— y el clic, que abre el modal del cofre.
+            // LA BALDOSA ABRE EL MODAL DEL COFRE SIEMPRE, este el reto como este.
             //
-            // El clic NO reclama: aqui todavia no se puede, y lo que el modal enseña es
-            // la cuenta atras y la racha, que es justo lo que se va a mirar. Cobrar es el
-            // boton del pie, y ese solo existe cuando de verdad se puede.
+            // El clic estuvo atado a `!claimed && !claimable` porque se penso como la
+            // fila de progreso que es mientras acumulas: el aviso con lo que falta y un
+            // modal que enseña la cuenta atras. Pero el modal de Kick no habla solo de
+            // eso —con el dia ya cobrado dice cuando se reinicia y como va la racha— y
+            // esa es informacion que se quiere mirar igual, o mas.
+            //
+            // Una baldosa que respondia al clic hasta el minuto 60 y dejaba de hacerlo
+            // justo despues no se lee como «ya no hay nada que ver»: se lee como que se
+            // rompio. Pedido el 2026-09-12.
+            //
+            // El clic NO reclama en ningun estado: solo abre. Cobrar es el boton del pie,
+            // que solo existe cuando de verdad se puede, y el `closest('button, a')` de
+            // aqui lo respeta.
+            //
+            // `_openDailyRewardModal` no depende del estado —busca el boton del cofre y
+            // lo pulsa, y si no lo encuentra abre el menu de la cuenta, que es donde vive
+            // en movil—, asi que no hubo que tocarla.
+            //
+            // El `title` si se queda solo en curso: es el unico estado en el que hay
+            // tiempo restante que decir. Con el cobrado, la ✓ y el «hace N horas» ya
+            // cuentan lo que hay.
             if (!claimed && !claimable) {
                 card.title = `${t.timeRemaining}: ${formatHoursMinutes(total - done)}`;
-                card.style.cursor = 'pointer';
-                card.addEventListener('click', (e) => {
-                    if (e.target.closest('button, a')) return;
-                    _hideTip();
-                    _openDailyRewardModal();
-                });
             }
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('button, a')) return;
+                _hideTip();
+                _openDailyRewardModal();
+            });
             return card;
         }
 
