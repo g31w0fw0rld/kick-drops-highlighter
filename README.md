@@ -5,6 +5,12 @@ Userscript that classifies and highlights drops/campaigns on Kick based on your 
 > [!NOTE]
 > **ONE CHECKBOX DOES TWO THINGS / UNA CASILLA HACE DOS COSAS:** ticking *hide expired/completed* also turns on automatic claiming — of your finished **drops** and of the **daily reward chest**, which the label does not say. It claims by clicking Kick's own buttons for rewards you already earned by watching: nothing is sent to Kick's API to claim, and it grants you nothing you could not click yourself. It is still automation, which Kick's terms may not permit, so decide with that in mind. / Marcar *ocultar cerrados/completados* activa además la reclamación automática —de tus **drops** terminados y del **cofre de recompensa diaria**—, algo que la etiqueta no dice. Reclama pulsando los propios botones de Kick, sobre recompensas que ya te ganaste viendo: no se envía nada a la API de Kick para reclamar, y no te da nada que no pudieras pulsar tú. Sigue siendo automatización, que las condiciones de Kick pueden no permitir, así que decide sabiéndolo.
 
+**⚡ Quick install / Instalación rápida:** **[Install / Instalar](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js)** — also on / también en [GreasyFork](https://greasyfork.org/scripts/573571) · [OpenUserJS](https://openuserjs.org/scripts/g31w0fw0rldgmail.com/Kick_Drops_Highlighter_+_Keywords_%28Full_+_i18n%29).
+
+> You need a userscript manager first: [Violentmonkey](https://violentmonkey.github.io/) (open source) or [Tampermonkey](https://www.tampermonkey.net/). On Chrome and Edge, also turn on **Allow user scripts** on the extension's own page in `chrome://extensions` — without it nothing runs. Step-by-step under [English](#english).
+>
+> Necesitas antes un gestor de userscripts: [Violentmonkey](https://violentmonkey.github.io/) (código abierto) o [Tampermonkey](https://www.tampermonkey.net/). En Chrome y Edge, activa además **Allow user scripts** en la página de la propia extensión en `chrome://extensions`; sin eso no se ejecuta nada. Pasos detallados en [Español](#español).
+
 ![The campaigns list with the matching campaign outlined in green, showing the time left and the watch time still needed, next to the panel](docs/screenshot-campaigns.png)
 
 *Campaigns: matching campaigns get outlined **green** on the page itself, and each one says what it still costs you right there — here *PUBG: Battlegrounds* is the only thing Kick has open, so it shows **⏳ 45 h · you still need 1h** in red; a campaign with no hurry shows a plain grey **⏱** with the time instead. The panel lists the same campaigns with their rewards, the filter chips and the sort. And its three tabs read **Active 1 · Upcoming 0 · Expired 1**, which is the redesign working: the day before, that same campaign was the 1 under *Upcoming*, and *Expired* was 3 until the two it should never have listed were taken out. / Campañas: las campañas que coinciden se enmarcan en **verde** en la propia página, y cada una dice ahí mismo lo que todavía te cuesta — aquí *PUBG: Battlegrounds* es lo único que Kick tiene abierto, así que lleva **⏳ 45 h · te faltan 1h** en rojo; una campaña sin prisa lleva en su lugar un **⏱** gris con el tiempo. El panel lista esas mismas campañas con sus recompensas, las etiquetas de filtro y el orden. Y sus tres pestañas marcan **Abiertos 1 · Próximos 0 · Cerrados 1**, que es el rediseño funcionando: el día antes esa misma campaña era el 1 de *Próximos*, y *Cerrados* marcaba 3 hasta que se fueron las dos que no debía listar.*
@@ -150,7 +156,7 @@ Userscript that classifies and highlights drops/campaigns on Kick based on your 
 
 **Install:**
 1. Install a userscript manager: [Violentmonkey](https://violentmonkey.github.io/) (open source, Chrome/Edge/Firefox) or [Tampermonkey](https://www.tampermonkey.net/). On Chrome and Edge, also turn on **Allow user scripts** on the extension's own page in `chrome://extensions` — without it nothing runs.
-2. Open the installer: [kick-drops-highlighter.user.js](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js) (also on [GreasyFork](https://greasyfork.org/es-419/users/1590477-g31w) and [OpenUserJS](https://openuserjs.org/users/g31w0fw0rldgmail.com/scripts)).
+2. Open the installer: [kick-drops-highlighter.user.js](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js) (also on [GreasyFork](https://greasyfork.org/scripts/573571) and [OpenUserJS](https://openuserjs.org/scripts/g31w0fw0rldgmail.com/Kick_Drops_Highlighter_+_Keywords_%28Full_+_i18n%29)).
 
 **Site:** `kick.com/drops/*`
 
@@ -252,7 +258,7 @@ Userscript that classifies and highlights drops/campaigns on Kick based on your 
 
 **Instalación:**
 1. Instala un gestor de userscripts: [Violentmonkey](https://violentmonkey.github.io/) (código abierto, Chrome/Edge/Firefox) o [Tampermonkey](https://www.tampermonkey.net/). En Chrome y Edge, activa además **Allow user scripts** en la página de la propia extensión en `chrome://extensions`; sin eso no se ejecuta nada.
-2. Abre el instalador: [kick-drops-highlighter.user.js](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js) (también en [GreasyFork](https://greasyfork.org/es-419/users/1590477-g31w) y [OpenUserJS](https://openuserjs.org/users/g31w0fw0rldgmail.com/scripts)).
+2. Abre el instalador: [kick-drops-highlighter.user.js](https://github.com/g31w0fw0rld/kick-drops-highlighter/raw/main/kick-drops-highlighter.user.js) (también en [GreasyFork](https://greasyfork.org/scripts/573571) y [OpenUserJS](https://openuserjs.org/scripts/g31w0fw0rldgmail.com/Kick_Drops_Highlighter_+_Keywords_%28Full_+_i18n%29)).
 
 **Sitio:** `kick.com/drops/*`
 
