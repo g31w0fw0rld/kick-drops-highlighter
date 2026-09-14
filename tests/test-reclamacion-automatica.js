@@ -112,6 +112,60 @@ const esDeReclamar = etiqueta => /claim/i.test(String(etiqueta || ''));
             `se pulsaron: ${JSON.stringify(toggled.botonesPulsados)}`);
     }
 
+    // --- EN ESPAÑOL, Y CON UN SEÑUELO AL LADO ------------------------------------
+    // Kick SI traduce el `aria-label` (verificado el 2026-09-13 con la página del
+    // usuario en español), así que el criterio del inglés no vale aquí. Hasta hoy esto
+    // se reclamaba igual, pero de rebote: el `<li>` del tramo completo trae UN solo
+    // botón y el criterio de «barra completa + un botón» lo daba por bueno sin leer
+    // nada. Este caso le quita esa muleta —mete un segundo botón accionable dentro del
+    // mismo `<li>`— para que lo único que pueda decidir sea la señal estructural
+    // (`bg-primary-base`), que no depende del idioma.
+    //
+    // El señuelo se calca del botón de reclamar y se le cambian las dos cosas que lo
+    // distinguen: la clase del primario y la etiqueta. Así el parecido es máximo y lo
+    // único que los separa es justo lo que el script mira.
+    const paneEs = pane
+        .replace('aria-label="Claim PGS 9 Comic Boom (Spray) reward"',
+                 'aria-label="Reclamar recompensa de PGS 9 Comic Boom (Spray)"')
+        .replace('<div class="contents">Claim</div>', '<div class="contents">Pedir</div>');
+    if (paneEs === pane) {
+        fallos.push('el fixture ya no trae el botón de reclamar en inglés: el caso en español no prueba nada');
+    }
+
+    const señuelo = (() => {
+        const m = paneEs.match(/<button[^>]*aria-label="Reclamar recompensa de PGS 9 Comic Boom \(Spray\)"[^>]*>/);
+        if (!m) return '';
+        return m[0]
+            .replace('bg-primary-base', 'bg-secondary-base')
+            .replace('aria-label="Reclamar recompensa de PGS 9 Comic Boom (Spray)"',
+                     'aria-label="Ver para canjear"') +
+            '<div class="contents">Ver</div></button>';
+    })();
+    if (!señuelo) fallos.push('no se pudo construir el botón señuelo a partir del fixture');
+    const paneEsConSeñuelo = paneEs.replace(
+        /<button[^>]*aria-label="Reclamar recompensa de PGS 9 Comic Boom \(Spray\)"/,
+        señuelo + '$&');
+
+    const es = await run({
+        ...base,
+        panels: [{ hidden: false, html: paneEsConSeñuelo }],
+        seed: {
+            kick_drop_keywords: JSON.stringify(['pubg']),
+            [CLAVE_CASILLA]: true
+        }
+    });
+
+    console.log(JSON.stringify({ enEspanol: es.botonesPulsados }, null, 2));
+
+    const pulsadosEs = es.botonesPulsados || [];
+    if (!pulsadosEs.some(e => /Reclamar recompensa de PGS 9 Comic Boom/.test(e))) {
+        fallos.push('con la UI en español no se pulsó el botón de reclamar; ' +
+            `se pulsaron: ${JSON.stringify(pulsadosEs)}`);
+    }
+    if (pulsadosEs.some(e => /Ver para canjear/.test(e))) {
+        fallos.push(`se pulsó el señuelo en vez del botón de reclamar: ${JSON.stringify(pulsadosEs)}`);
+    }
+
     if (fallos.length) { console.log('\nFALLOS:'); fallos.forEach(f => console.log(' - ' + f)); process.exit(1); }
     console.log('\nTODO OK');
 })();
