@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.15
+// @version      1.3.16
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.15";
+    const SCRIPT_VERSION = "1.3.16";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -6522,19 +6522,18 @@
             card.id = 'kick-daily-chest-card';
             card.className = `${W_SURFACE} flex flex-col rounded-lg overflow-hidden`;
 
-            const imgWrapper = document.createElement('div');
-            imgWrapper.className = `relative aspect-square ${W_SURFACE_HIGH}`;
-            const img = document.createElement('img');
-            img.alt = t.dailyRewardTitle || 'Daily reward';
-            img.loading = 'lazy';
             const won = (claimed && c.winner && c.winner.card_url) || '';
-            // El cofre lleva su propio margen negro, asi que va entero (`contain`) y no
-            // recortado como las imagenes de recompensa, que son cuadradas de origen.
-            img.className = 'w-full h-full ' + (won ? 'object-cover' : 'object-contain');
+            // LAS DOS VAN ENTERAS (`contain`), y desde el 2026-09-17 tambien la carta que
+            // toca. El cofre ya iba asi porque lleva su propio margen negro; la carta iba
+            // recortada (`cover`) por parecerse a las de recompensa, y no se parece: las
+            // de Kick son cuadradas de origen y la carta viene mas alta que ancha, asi que
+            // recortarla en un cuadro le corta arriba y abajo justo el marco y el nombre,
+            // que es lo unico que dice cual te toco.
+            const { caja: imgWrapper, img } = _cuadroDeImagen('contain');
+            img.alt = t.dailyRewardTitle || 'Daily reward';
             img.src = won ? (/^https?:/i.test(won) ? won : KICK_CDN_BASE + won) : DAILY_CHEST_IMG;
             // Si la carta que toco no carga, el cofre: mejor eso que un hueco negro.
-            img.onerror = () => { img.onerror = null; img.className = 'w-full h-full object-contain'; img.src = DAILY_CHEST_IMG; };
-            imgWrapper.appendChild(img);
+            img.onerror = () => { img.onerror = null; _ajustarImagen(img, 'contain'); img.src = DAILY_CHEST_IMG; };
 
             // LA BARRA DE PROGRESO, con el marcado exacto de Kick (verificado en
             // docs/dom-campaigns-progress-2026-08.html): al fondo del recuadro de la
@@ -6660,6 +6659,55 @@
             return card;
         }
 
+        // EL RECUADRO CUADRADO DE UNA BALDOSA, con su imagen dentro y FUERA DEL FLUJO.
+        //
+        // `aspect-square` por si sola NO basta, y por eso la baldosa del cofre salia con
+        // otra altura que las de los drops. El recuadro es hijo de un flex en columna, asi
+        // que lleva `min-height: auto`: no puede quedar mas bajo que su contenido. Y su
+        // contenido era la propia <img> con `h-full`, que contra una altura indefinida se
+        // resuelve en `auto` —o sea, la altura NATURAL de la imagen escalada al ancho—.
+        //
+        // Con una imagen cuadrada las dos cuentas dan lo mismo y no se notaba. Con una que
+        // no lo es, manda la imagen y la proporcion se pierde, y son justo las dos del
+        // cofre: el cofre mide 288x231 (mas ancho que alto, medido sobre el data: URI) y
+        // la carta que toca viene mas alta que ancha. Las de recompensa de Kick si son
+        // cuadradas, que es por lo que esto solo se veia en una baldosa.
+        //
+        // Sacando la <img> del flujo (`position: absolute`) el recuadro se queda sin
+        // contenido que lo empuje, asi que manda la proporcion y TODAS las baldosas miden
+        // lo mismo. Lo que no llena se queda centrado, que es lo que hace `object-fit` por
+        // su cuenta: no hay que centrarlo a mano.
+        //
+        // La geometria va en `style` ademas de en las clases, y no es cinturon y tirantes:
+        // estas son utilidades de Tailwind y solo existen si el CSS de Kick las trae
+        // compiladas —el fichero ya cuenta con eso en otros sitios, ver W_SURFACE—. El
+        // aspecto puede depender de eso; que las baldosas midan lo mismo, no.
+        function _cuadroDeImagen(ajuste) {
+            const caja = document.createElement('div');
+            caja.className = `relative aspect-square ${W_SURFACE_HIGH}`;
+            caja.style.position = 'relative';
+            caja.style.aspectRatio = '1 / 1';
+            caja.style.overflow = 'hidden';
+            const img = document.createElement('img');
+            img.loading = 'lazy';
+            _ajustarImagen(img, ajuste);
+            img.style.position = 'absolute';
+            img.style.top = '0';
+            img.style.left = '0';
+            img.style.width = '100%';
+            img.style.height = '100%';
+            caja.appendChild(img);
+            return { caja, img };
+        }
+
+        // `contain` deja ver la imagen entera y `cover` la recorta para llenar. Se cambia
+        // en una sola llamada porque va en dos sitios —la clase y el estilo— y el cofre lo
+        // cambia sobre la marcha cuando la carta que toco no carga.
+        function _ajustarImagen(img, ajuste) {
+            img.className = 'w-full h-full object-' + ajuste;
+            img.style.objectFit = ajuste;
+        }
+
         function _renderClaimedInventory() {
             if (!_claimedInventoryReady || !_claimedTabIsFront()) return;
             // NO se sale por «cero drops reclamados»: desde que el cofre diario es una
@@ -6775,14 +6823,9 @@
                 card.className = `${W_SURFACE} flex flex-col rounded-lg overflow-hidden`;
 
                 // Image
-                const imgWrapper = document.createElement('div');
-                imgWrapper.className = `relative aspect-square ${W_SURFACE_HIGH}`;
-                const img = document.createElement('img');
+                const { caja: imgWrapper, img } = _cuadroDeImagen('cover');
                 img.alt = reward.name || '';
-                img.loading = 'lazy';
-                img.className = 'w-full h-full object-cover';
                 img.src = reward.image_url ? KICK_CDN_BASE + reward.image_url : '';
-                imgWrapper.appendChild(img);
                 card.appendChild(imgWrapper);
 
                 // Info section: time + count + name

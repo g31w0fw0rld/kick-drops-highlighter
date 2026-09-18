@@ -865,6 +865,25 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     for (let e = g; e && e !== d.body; e = e.parentElement) if (e.style && e.style.display === 'none') return true;
                     return false;
                 })(),
+                // LA CAJA DE CADA BALDOSA DE LA REJILLA, tal y como queda DECLARADA.
+                //
+                // jsdom no hace layout, asi que no hay alturas de verdad que devolver y
+                // preguntarselas seria inventarselas. Lo que si es cierto es lo que el
+                // script escribio: la proporcion del recuadro y si la imagen esta o no en
+                // el flujo —que son las dos cosas que decidian la altura cuando la baldosa
+                // del cofre salia mas alta que las de drop, el 2026-09-17—.
+                cajasRejilla: Array.from(d.querySelectorAll('#kick-claimed-inventory img')).map(img => {
+                    const recuadro = img.parentElement;
+                    const tarjeta = recuadro && recuadro.parentElement;
+                    return {
+                        cofre: !!(tarjeta && tarjeta.id === 'kick-daily-chest-card'),
+                        proporcion: recuadro ? (recuadro.style.aspectRatio || '') : '',
+                        // `true` = la imagen no puede empujar el alto de su recuadro.
+                        fueraDelFlujo: img.style.position === 'absolute',
+                        alto: img.style.height || '',
+                        ajuste: img.style.objectFit || ''
+                    };
+                }),
                 visibleClaimedCards: Array.from(d.querySelectorAll('.border-outline-decorative'))
                     .filter(n => { for (let e = n; e && e !== d.body; e = e.parentElement) if (e.style && e.style.display === 'none') return false; return true; }).length
             };
