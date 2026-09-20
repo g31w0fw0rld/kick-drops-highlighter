@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.16
+// @version      1.3.17
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.16";
+    const SCRIPT_VERSION = "1.3.17";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -2277,7 +2277,11 @@
                             // una tarjeta del panel agrupa TODAS las sub-campañas de
                             // un juego: sin este nombre no hay forma de saber cuanto
                             // llevas visto de la que reparte esta reward concreta.
-                            campaignName: campaignName
+                            campaignName: campaignName,
+                            // Y en que estado esta ESA sub-campaña, que no tiene por
+                            // que ser el de la tarjeta que la va a enseñar (ver el
+                            // filtro de abajo, justo antes de `_apiDataReady`).
+                            campaignStatus: status
                         });
                     }
                     if (drops.length > 0) {
@@ -2337,6 +2341,42 @@
                     }
                 }
             } catch (e) { console.warn('[Kick Drops API] Fetch error:', e); }
+
+            // CADA TARJETA ENSEÑA SOLO LAS RECOMPENSAS DE SU PROPIO ESTADO.
+            //
+            // La entrada va indexada por JUEGO y acumula todas sus sub-campañas, que es
+            // lo que hace falta para que un juego con varias no pierda ninguna. Pero esas
+            // sub-campañas no tienen por que estar en el mismo estado, y la entrada se
+            // pinta como UNA tarjeta en UNA sola solapa —la de `status`, que es la mas
+            // viva—: las de los otros estados no tenian donde salir y salian ahi.
+            //
+            // Reportado el 2026-09-20 con PUBG: la tarjeta de «PUBG: Battlegrounds -
+            // KRAFTON», abierta, listaba «THE ORIGINAL IS BACK T-Shirt» y «Peculiar
+            // Greeting» junto a la unica recompensa que la pagina tenia delante («PUBG
+            // Varsity Jacket»). Las dos primeras eran de sub-campañas ya cerradas del
+            // mismo juego. Y no es solo la lista: de estos mismos tramos salen el «te
+            // faltan» de la tarjeta, la marca ⏳ de la pagina y el texto del 🔗, o sea
+            // que un premio que ya no se puede ganar estaba entrando en la cuenta.
+            //
+            // Se filtra AQUI y no en cada consumidor porque el estado de la entrada ya
+            // decide en que solapa vive: un tramo de otro estado no es que sobre en un
+            // sitio, es que no tiene ninguno donde ser cierto.
+            //
+            // Lo que esto NO hace: darle tarjeta propia en «Cerrados» a la sub-campaña
+            // cerrada de un juego que sigue abierto. Hoy no la tiene —la entrada es una
+            // por juego— y antes de esto tampoco: salia en la tarjeta de abiertos, que
+            // es justo el fallo. Si algun dia se quiere, hay que partir la entrada por
+            // estado, y eso toca el cruce con las filas del DOM (`seenTitles`).
+            for (const entry of Object.values(_apiDropNames)) {
+                if (!entry || !entry.drops) continue;
+                const suyos = entry.drops.filter(d => (d.campaignStatus || entry.status) === entry.status);
+                // Solo si queda algo. Una entrada sin tramos desaparece del panel —todos
+                // los consumidores exigen `drops.length`— y eso seria peor que la mezcla:
+                // si algun dia el estado de la entrada y el de sus tramos dejaran de
+                // casar, la tarjeta se iria en silencio en vez de enseñar de mas.
+                if (suyos.length) entry.drops = suyos;
+            }
+
             _apiDataReady = true;
             // De aqui salen las solapas de abiertos y proximos, asi que queda dicho
             // que estados llegaron y cuantas campañas quedaron en cada solapa. Si
