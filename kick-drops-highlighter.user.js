@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.18
+// @version      1.3.19
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.18";
+    const SCRIPT_VERSION = "1.3.19";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -5424,8 +5424,18 @@
                 // taparla por el nombre de una hermana la perderia. Con `some`, la jornada
                 // abierta de PUBG desapareceria en cuanto una cerrada del mismo juego
                 // estuviera delante, que es el fallo del 2026-09-20 otra vez.
+                //
+                // Y SOLO PARA LAS ENTRADAS QUE SON UN JUEGO (`keyIsCategory`). Una entrada
+                // cuya clave es el nombre de la CAMPAÑA —las que la API sirve sin
+                // `category`— no es la gemela del grupo sino una vista mas fina de una de
+                // sus sub-campañas, con su ventana y sus recompensas, y al pulsarla enfoca
+                // SU titulo y no el del juego: esas se quedan, que es lo que decidio la
+                // regla de `seenSubNames` de aqui arriba. Sin este corte se iban todas las
+                // sub-campañas de un grupo de varias —«Football Drop: Jungle Jersey» dentro
+                // del grupo «KICK»—, que es exactamente lo contrario de lo que este cambio
+                // viene a hacer.
                 const suyas = (entry.drops || []).map(d => _fold(_collapse(d.campaignName).toLowerCase()));
-                if (seenSubNamesTodos && seenSubNamesTodos.size && suyas.length &&
+                if (entry.keyIsCategory && seenSubNamesTodos && seenSubNamesTodos.size && suyas.length &&
                     suyas.every(n => seenSubNamesTodos.has(n))) continue;
                 // Y una CERRADA que ya reclamaste tampoco entra, porque la pagina no
                 // la tiene en cerradas: la tiene en Reclamados. Verificado el 2026-08-20
