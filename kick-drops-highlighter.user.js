@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.17
+// @version      1.3.18
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.17";
+    const SCRIPT_VERSION = "1.3.18";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -2162,6 +2162,22 @@
         // mantenga su vocabulario, asi que son el respaldo y no al contrario.
         const _STATUS_RANK = { expired: 1, upcoming: 2, active: 3 };
 
+        // La clave de una entrada de la API: juego + estado. El separador es un caracter
+        // de control y no un guion ni una barra, que salen dentro de los nombres de juego
+        // («Counter-Strike», «Slots & Casino»): con uno de esos, partir la clave seria
+        // adivinar donde termina el juego.
+        const _API_KEY_SEP = '\u0000';
+        const _claveApi = (juego, status) => juego + _API_KEY_SEP + status;
+        const _juegoDeClave = (clave) => String(clave).split(_API_KEY_SEP)[0];
+
+        // LA MAS VIVA de varias entradas. Un juego tiene ahora una entrada por estado, y
+        // todo lo que no es el panel —cruzar con la fila del DOM, marcar la pagina, avisar—
+        // pregunta por el JUEGO y espera UNA. Se le da la mas viva, que es exactamente el
+        // objeto unico que existia antes de partirlas: lo abierto es lo que tiene plazo,
+        // progreso y algo que hacer, y es de lo que hablaban esos tres sitios.
+        const _masViva = (entradas) => entradas.reduce((mejor, e) =>
+            (!mejor || _STATUS_RANK[e.status] > _STATUS_RANK[mejor.status]) ? e : mejor, null);
+
         // La imagen de la tarjeta del panel. Antes salia del <img> del DOM y ahora hace
         // falta sacarla de aqui: la seccion que no tienes delante no tiene DOM del que
         // leerla, asi que las tarjetas de cerrados y de proximos se quedaban sin imagen.
@@ -2277,11 +2293,13 @@
                             // una tarjeta del panel agrupa TODAS las sub-campañas de
                             // un juego: sin este nombre no hay forma de saber cuanto
                             // llevas visto de la que reparte esta reward concreta.
-                            campaignName: campaignName,
-                            // Y en que estado esta ESA sub-campaña, que no tiene por
-                            // que ser el de la tarjeta que la va a enseñar (ver el
-                            // filtro de abajo, justo antes de `_apiDataReady`).
-                            campaignStatus: status
+                            campaignName: campaignName
+                            // Aqui iba tambien `campaignStatus`, el estado de la
+                            // sub-campaña, porque la entrada era una por juego y podia
+                            // acumular tramos de varios estados: servia para filtrarlos
+                            // (1.3.17). Con la entrada partida por juego Y estado
+                            // (1.3.18) un tramo no puede caer ya en una entrada de otro
+                            // estado, asi que el campo se quedo sin nada que decir.
                         });
                     }
                     if (drops.length > 0) {
@@ -2291,7 +2309,36 @@
                         // under one "Rust - Facepunch Studios" accordion, so ACCUMULATE their
                         // drops here instead of overwriting — otherwise only the last
                         // sub-campaign's badge would survive.
-                        const key = categoryName || campaignName;
+                        // LA CLAVE ES EL JUEGO **Y SU ESTADO**.
+                        //
+                        // Un juego agrupa sus sub-campañas en una sola entrada, que es lo
+                        // que hace falta para que no se pierda ninguna. Pero esas
+                        // sub-campañas no tienen por que estar en el mismo estado, y la
+                        // entrada se pinta como UNA tarjeta en UNA sola solapa: las de los
+                        // otros estados no tenian donde salir.
+                        //
+                        // Primero se intento que mandara la mas viva y se tiraran los
+                        // tramos de los demas estados (1.3.17, reportado con PUBG: la
+                        // tarjeta abierta listaba recompensas de jornadas ya cerradas).
+                        // Eso quito la mentira pero dejo el agujero: lo cerrado de un juego
+                        // abierto no salia en ningun sitio. Y se noto en la cuenta —«al
+                        // pasar de caducadas a activas baja el numero de caducadas»,
+                        // 2026-09-20—, porque la pagina de cerradas SI lista esas tarjetas
+                        // y la de campañas no, asi que la solapa de cerrados del panel
+                        // decia una cosa distinta segun donde estuvieras.
+                        //
+                        // Con el estado dentro de la clave, PUBG tiene dos entradas —una
+                        // abierta y otra cerrada—, cada una con sus recompensas, y las dos
+                        // salen esten donde esten, que es lo que el panel viene a hacer.
+                        // El filtro de 1.3.17 sobra: ningun tramo puede caer ya en una
+                        // entrada de otro estado.
+                        //
+                        // Lo que NO cambia es lo que ve el resto del script. Los tres
+                        // buscadores de entrada (`_apiEntryForCard`, `_findEntryForTitle`,
+                        // `_apiEntryForNotifTitle`) devuelven LA MAS VIVA de las que casan,
+                        // que es exactamente el objeto que habia antes: cruzar con la fila
+                        // del DOM, marcar la pagina y avisar siguen viendo lo mismo.
+                        const key = _claveApi(categoryName || campaignName, status);
                         // Full display title matching DOM format: "Game - Studio"
                         const displayTitle = orgName ? `${categoryName || campaignName} - ${orgName}` : (categoryName || campaignName);
                         if (!_apiDropNames[key]) {
@@ -2304,6 +2351,10 @@
                                 // juego, asi que solo una clave que SEA el juego puede
                                 // casar con ella (ver _apiEntryForCard).
                                 keyIsCategory: !!categoryName,
+                                // El nombre del juego SIN el estado. La clave lo lleva
+                                // pegado, y partirla por el separador en cada busqueda
+                                // seria reconstruir a mano lo que aqui ya se sabe.
+                                gameKey: categoryName || campaignName,
                                 // El MISMO texto contra el que se acaba de filtrar. Se
                                 // guarda porque si no, la tarjeta no puede decir por que
                                 // esta ahi: las etiquetas se calculaban sobre el titulo
@@ -2331,51 +2382,16 @@
                         if (!_apiDropNames[key].imgSrc) {
                             _apiDropNames[key].imgSrc = _apiImage(campaign);
                         }
-                        // Un juego puede repartir sub-campañas en estados distintos y
-                        // en el panel es UNA tarjeta: manda la mas viva, que es la que
-                        // decide en que solapa aparece. Al reves, una sub-campaña ya
-                        // cerrada mandaria a "cerrados" un juego con drops abiertos.
-                        if (_STATUS_RANK[status] > _STATUS_RANK[_apiDropNames[key].status]) {
-                            _apiDropNames[key].status = status;
-                        }
                     }
                 }
             } catch (e) { console.warn('[Kick Drops API] Fetch error:', e); }
 
-            // CADA TARJETA ENSEÑA SOLO LAS RECOMPENSAS DE SU PROPIO ESTADO.
-            //
-            // La entrada va indexada por JUEGO y acumula todas sus sub-campañas, que es
-            // lo que hace falta para que un juego con varias no pierda ninguna. Pero esas
-            // sub-campañas no tienen por que estar en el mismo estado, y la entrada se
-            // pinta como UNA tarjeta en UNA sola solapa —la de `status`, que es la mas
-            // viva—: las de los otros estados no tenian donde salir y salian ahi.
-            //
-            // Reportado el 2026-09-20 con PUBG: la tarjeta de «PUBG: Battlegrounds -
-            // KRAFTON», abierta, listaba «THE ORIGINAL IS BACK T-Shirt» y «Peculiar
-            // Greeting» junto a la unica recompensa que la pagina tenia delante («PUBG
-            // Varsity Jacket»). Las dos primeras eran de sub-campañas ya cerradas del
-            // mismo juego. Y no es solo la lista: de estos mismos tramos salen el «te
-            // faltan» de la tarjeta, la marca ⏳ de la pagina y el texto del 🔗, o sea
-            // que un premio que ya no se puede ganar estaba entrando en la cuenta.
-            //
-            // Se filtra AQUI y no en cada consumidor porque el estado de la entrada ya
-            // decide en que solapa vive: un tramo de otro estado no es que sobre en un
-            // sitio, es que no tiene ninguno donde ser cierto.
-            //
-            // Lo que esto NO hace: darle tarjeta propia en «Cerrados» a la sub-campaña
-            // cerrada de un juego que sigue abierto. Hoy no la tiene —la entrada es una
-            // por juego— y antes de esto tampoco: salia en la tarjeta de abiertos, que
-            // es justo el fallo. Si algun dia se quiere, hay que partir la entrada por
-            // estado, y eso toca el cruce con las filas del DOM (`seenTitles`).
-            for (const entry of Object.values(_apiDropNames)) {
-                if (!entry || !entry.drops) continue;
-                const suyos = entry.drops.filter(d => (d.campaignStatus || entry.status) === entry.status);
-                // Solo si queda algo. Una entrada sin tramos desaparece del panel —todos
-                // los consumidores exigen `drops.length`— y eso seria peor que la mezcla:
-                // si algun dia el estado de la entrada y el de sus tramos dejaran de
-                // casar, la tarjeta se iria en silencio en vez de enseñar de mas.
-                if (suyos.length) entry.drops = suyos;
-            }
+            // CADA TARJETA ENSEÑA SOLO LAS RECOMPENSAS DE SU PROPIO ESTADO, y ya no
+            // hace falta filtrarlo aqui: lo garantiza la clave de la entrada, que lleva el
+            // estado dentro (ver el comentario de `_claveApi` arriba). Entre 1.3.17 y
+            // 1.3.18 esto fue un filtro sobre `drops` —la entrada era una por juego y
+            // acumulaba tramos de sub-campañas en otros estados—, y tirarlos quitaba la
+            // mentira pero perdia lo cerrado de un juego abierto.
 
             _apiDataReady = true;
             // De aqui salen las solapas de abiertos y proximos, asi que queda dicho
@@ -2426,11 +2442,12 @@
         function _apiEntryForCard(gameName) {
             const g = _fold(String(gameName || '').trim().toLowerCase());
             if (!g) return null;
-            for (const [key, entry] of Object.entries(_apiDropNames)) {
+            const casan = [];
+            for (const entry of Object.values(_apiDropNames)) {
                 if (!entry || !entry.keyIsCategory) continue;
-                if (_fold(String(key).trim().toLowerCase()) === g) return entry;
+                if (_fold(String(entry.gameKey || '').trim().toLowerCase()) === g) casan.push(entry);
             }
-            return null;
+            return _masViva(casan);
         }
 
         // Lo mismo para un AVISO guardado, cuyo titulo es el `displayTitle` de la entrada
@@ -2439,30 +2456,48 @@
         function _apiEntryForNotifTitle(notifTitle) {
             const t = _fold(String(notifTitle || '').trim().toLowerCase());
             if (!t) return null;
+            const casan = [];
             for (const [key, entry] of Object.entries(_apiDropNames)) {
                 if (!entry) continue;
-                if (_fold(String(entry.displayTitle || key).trim().toLowerCase()) === t) return entry;
+                // El titulo es el mismo en las dos entradas de un juego partido, asi que
+                // esto casa con las dos y se queda con la mas viva: un aviso habla de lo
+                // que esta corriendo, no de lo que ya cerro.
+                if (_fold(String(entry.displayTitle || _juegoDeClave(key)).trim().toLowerCase()) === t) casan.push(entry);
             }
-            return null;
+            return _masViva(casan);
         }
 
         // Find full API entry for a card title — returns {drops}
-        function _findEntryForTitle(cardTitle) {
+        // El `status` es OPCIONAL y es el de quien pregunta —una tarjeta del panel, una
+        // fila de la pagina—. Desde 1.3.18 un juego tiene una entrada por estado y las dos
+        // se llaman igual, asi que sin el, la tarjeta CERRADA de PUBG sacaria sus tramos
+        // de la entrada abierta: el «⏳ cierra en 5 h» de una campaña que ya cerro. Cuando
+        // no se sabe —un aviso guardado, una fila sin estado— se sigue devolviendo la mas
+        // viva, que es el objeto unico que existia antes de partirlas.
+        function _findEntryForTitle(cardTitle, status) {
             if (!cardTitle) return null;
             const ct = _fold(cardTitle.toLowerCase());
+            const casan = [];
             for (const [key, entry] of Object.entries(_apiDropNames)) {
-                const k = _fold(key.toLowerCase());
-                if (ct.includes(k) || k.includes(ct)) return entry;
+                // Sobre el JUEGO de la clave, no sobre la clave entera: con el estado
+                // pegado detras, un `includes` lo estaria comparando tambien contra la
+                // palabra «active».
+                const k = _fold(_juegoDeClave(key).toLowerCase());
+                if (ct.includes(k) || k.includes(ct)) { casan.push(entry); continue; }
                 const cardGame = ct.split(' - ')[0].trim();
                 const keyGame = k.split(' - ')[0].trim();
-                if (cardGame && keyGame && (cardGame.includes(keyGame) || keyGame.includes(cardGame))) return entry;
+                if (cardGame && keyGame && (cardGame.includes(keyGame) || keyGame.includes(cardGame))) casan.push(entry);
             }
-            return null;
+            if (status) {
+                const suya = casan.find(e => e.status === status);
+                if (suya) return suya;
+            }
+            return _masViva(casan);
         }
 
         // Find drop names array for a card title (convenience wrapper)
-        function _findDropNamesForTitle(cardTitle) {
-            const entry = _findEntryForTitle(cardTitle);
+        function _findDropNamesForTitle(cardTitle, status) {
+            const entry = _findEntryForTitle(cardTitle, status);
             return entry ? entry.drops : null;
         }
 
@@ -2497,7 +2532,7 @@
                 if (!entry || !entry.drops || entry.drops.length === 0) continue;
                 // Solo las abiertas avisan (ver el corte de arriba).
                 if (entry.status !== 'active') continue;
-                const title = entry.displayTitle || key;
+                const title = entry.displayTitle || _juegoDeClave(key);
                 const titleLower = title.toLowerCase();
                 // Mismo criterio que el escaneo de la pagina, negativas incluidas:
                 // una campaña descartada no puede colarse por la puerta de atras
@@ -2555,16 +2590,19 @@
             // es el coste sino si quedo algo ganado y sin recoger —el texto de esa pestaña
             // dice que eso se puede reclamar aunque la ventana haya cerrado— y esos dos
             // datos no son el mismo trabajo.
+            // El `status` de cada panel va con el: es el que le dice al buscador de
+            // entradas de cual de las dos de ese juego —la abierta o la proxima— tiene que
+            // sacar los tramos (ver `_findEntryForTitle`).
             const panes = [
-                { id: "kick-drops-active-pane", urgency: true },
-                { id: "kick-drops-upcoming-pane", urgency: false }
+                { id: "kick-drops-active-pane", urgency: true, status: 'active' },
+                { id: "kick-drops-upcoming-pane", urgency: false, status: 'upcoming' }
             ];
-            for (const { id, urgency } of panes) {
+            for (const { id, urgency, status } of panes) {
                 const pane = document.getElementById(id);
                 if (!pane) continue;
                 pane.querySelectorAll("[data-notif-title]").forEach(card => {
                     const ct = card.getAttribute("data-notif-title");
-                    const drops = _findDropNamesForTitle(ct);
+                    const drops = _findDropNamesForTitle(ct, status);
                     if (!drops || drops.length === 0) return;
                     // Se repinta en vez de saltarse los badges ya puestos: el estado de
                     // reclamado llega despues que los nombres (los nombres son publicos,
@@ -2991,7 +3029,7 @@
         // va al final con Infinity y conserva el orden de la pagina, porque sort()
         // es estable.
         function _urgencySortKey(item) {
-            const u = _computeUrgency(_findDropNamesForTitle(item && item.title));
+            const u = _computeUrgency(_findDropNamesForTitle(item && item.title, item && item.status));
             return u ? u.minutesLeft : Infinity;
         }
 
@@ -3064,7 +3102,7 @@
             const on = getViewFilters();
             if (on.length === 0) return items || [];
             return (items || []).filter(item => {
-                const drops = _findDropNamesForTitle(item && item.title);
+                const drops = _findDropNamesForTitle(item && item.title, item && item.status);
                 return on.every(id => _passesViewFilter(id, drops));
             });
         }
@@ -3117,7 +3155,7 @@
         // orden de la pagina, porque sort() es estable —la misma regla que usa el
         // orden por urgencia—.
         function _cheapestSortKey(item) {
-            const rest = _remainingMinutes(_findDropNamesForTitle(item && item.title), 'min');
+            const rest = _remainingMinutes(_findDropNamesForTitle(item && item.title, item && item.status), 'min');
             return rest === null ? Infinity : rest;
         }
 
@@ -5039,11 +5077,12 @@
         // que habria que decidir tambien que hacer con las que no lo traen.
 
         function _shareTextFor(campaign) {
-            const entry = _findEntryForTitle(campaign && campaign.title);
-            // Los tramos salen de _apiDropNames, que va indexado por CATEGORIA (juego) y
-            // ACUMULA las sub-campañas de ese juego. Asi que esta lista puede mezclar
-            // recompensas de varias sub-campañas bajo un solo titulo: es lo mismo que
-            // enseña el badge de la tarjeta, no una lista de una sub-campaña concreta.
+            const entry = _findEntryForTitle(campaign && campaign.title, campaign && campaign.status);
+            // Los tramos salen de _apiDropNames, que va indexado por CATEGORIA (juego) Y
+            // ESTADO, y ACUMULA las sub-campañas de ese juego que esten en ese estado. Asi
+            // que esta lista puede mezclar recompensas de varias sub-campañas bajo un solo
+            // titulo: es lo mismo que enseña el badge de la tarjeta, no una lista de una
+            // sub-campaña concreta. Lo que ya no mezcla son las de OTRO estado.
             const drops = (entry && entry.drops) || [];
             const lines = [campaign.title || ''];
             // _apiDateRange de aqui recibe LOS DROPS (saca min/max de sus starts_at y
@@ -5338,18 +5377,30 @@
             return `${fmt(min)} - ${fmt(max)}`;
         }
 
-        function _apiItemsFor(status, seen, seenSubNames) {
+        function _apiItemsFor(status, seen, seenSubNames, seenSubNamesTodos) {
             if (!_apiDataReady) return [];
             const notifs = getNotifications();
             const out = [];
             for (const [key, entry] of Object.entries(_apiDropNames)) {
                 if (!entry || entry.status !== status) continue;
                 if (!entry.drops || entry.drops.length === 0) continue;
-                const title = entry.displayTitle || key;
+                const title = entry.displayTitle || _juegoDeClave(key);
                 // `seen` y `seenSubNames` llegan doblados desde renderResults (ver
                 // _fold), asi que la entrada de la API se dobla tambien: si no, una
                 // tilde de diferencia entre las dos fuentes saca la campaña dos veces.
-                if (seen.has(_fold(title.toLowerCase()))) continue;
+                // TAPA LA QUE ESTA DELANTE, Y SOLO EN SU MISMA SOLAPA. La tarjeta del
+                // DOM manda sobre su gemela de la API: lleva imagen, la fecha tal y como
+                // la escribe Kick y sabe hacer scroll hasta si misma.
+                //
+                // Pero una tarjeta del DOM en OTRO estado no es la gemela de nadie: un
+                // juego reparte varias sub-campañas y pueden estar en estados distintos
+                // —PUBG el 2026-09-20: dos jornadas cerradas y la del dia abierta—, y
+                // cada pagina de Kick solo tiene delante las de su pestaña. Taparla por
+                // compartir el nombre del juego era perder la otra mitad del juego por
+                // estar mirando una pestaña, que es justo lo que el panel viene a evitar.
+                //
+                // Lo que sigue cruzando solapas es la identidad de abajo.
+                if (seen.has(_claveApi(_fold(title.toLowerCase()), status))) continue;
                 // Segunda clave, para las campañas que el titulo no puede cruzar: si
                 // esta entrada ES la unica sub-campaña de un grupo que YA esta delante
                 // como tarjeta del DOM, no vuelve a entrar. Es identidad y no parecido
@@ -5360,6 +5411,22 @@
                 // esta explicado el porque.
                 if (seenSubNames && seenSubNames.size &&
                     (entry.drops || []).some(d => seenSubNames.has(_fold(_collapse(d.campaignName).toLowerCase())))) continue;
+                // Y LA MISMA PREGUNTA PARA LOS GRUPOS DE VARIAS: si TODAS las campañas de
+                // las que habla esta entrada estan ya delante —con otro estado, porque si
+                // no la habria tapado el titulo de arriba—, es que las dos fuentes
+                // clasifican lo mismo distinto, y eso es una sola tarjeta. El caso que
+                // estreno la deduplicacion el 2026-08-20 tenia una sola sub-campaña y lo
+                // cubria la regla de arriba; con la entrada partida por estado hay que
+                // cubrirlo tambien cuando el grupo trae doce, como Rust.
+                //
+                // Es «TODAS» y no «alguna»: una entrada con una campaña que la pagina no
+                // tiene es lo contrario de un duplicado —es lo que solo se ve aqui— y
+                // taparla por el nombre de una hermana la perderia. Con `some`, la jornada
+                // abierta de PUBG desapareceria en cuanto una cerrada del mismo juego
+                // estuviera delante, que es el fallo del 2026-09-20 otra vez.
+                const suyas = (entry.drops || []).map(d => _fold(_collapse(d.campaignName).toLowerCase()));
+                if (seenSubNamesTodos && seenSubNamesTodos.size && suyas.length &&
+                    suyas.every(n => seenSubNamesTodos.has(n))) continue;
                 // Y una CERRADA que ya reclamaste tampoco entra, porque la pagina no
                 // la tiene en cerradas: la tiene en Reclamados. Verificado el 2026-08-20
                 // con los dos volcados del mismo rato —Rust con sus doce sub-campañas en
@@ -5415,9 +5482,24 @@
             // campaña esta delante, la API no vuelve a meterla por otra solapa. Mirando
             // solo su seccion, un juego que la pagina lista como abierto y la API tiene
             // por cerrado salia en las dos a la vez.
+            //
+            // Y la clave lleva el ESTADO, no solo el titulo, porque desde 1.3.18 un juego
+            // puede tener dos entradas —una abierta y otra cerrada, con sus sub-campañas
+            // cada una— y un titulo a secas las tapaba las dos con una sola tarjeta.
+            //
+            // Reportado el 2026-09-20: «al pasar de caducadas a activas baja el numero de
+            // caducadas». Al reproducirlo salio ademas el sintoma feo del mismo fallo:
+            // estando en /drops/expired, la tarjeta cerrada de PUBG tapaba a la entrada
+            // ABIERTA del mismo juego, y «Drops Abiertos» decia (0) con una campaña
+            // corriendo y cinco horas para que cerrara.
+            //
+            // Lo que sigue tapando de una solapa a otra es la IDENTIDAD —el conjunto de
+            // nombres de sub-campaña de aqui abajo—, que es lo que distingue «la misma
+            // campaña que las dos fuentes clasifican distinto» de «dos sub-campañas
+            // distintas del mismo juego». Ver como se usan las dos en `_apiItemsFor`.
             const scanned = new Set(
                 [].concat(activeItems || [], upcomingItems || [], expiredItems || [])
-                    .map(i => _fold(String(i.title || '').toLowerCase()))
+                    .map(i => _claveApi(_fold(String(i.title || '').toLowerCase()), i.status))
             );
             // Y contra las sub-campañas de esas mismas tarjetas, que es lo unico que
             // cruza cuando la campaña de la API no trae `category`: su clave es el
@@ -5441,9 +5523,22 @@
                     .reduce((acc, i) => acc.concat(i.subNames), [])
                     .map(n => _fold(String(n).toLowerCase()))
             );
-            activeItems = (activeItems || []).concat(_apiItemsFor('active', scanned, scannedSubNames));
-            upcomingItems = (upcomingItems || []).concat(_apiItemsFor('upcoming', scanned, scannedSubNames));
-            expiredItems = (expiredItems || []).concat(_apiItemsFor('expired', scanned, scannedSubNames));
+            // Y TODOS los nombres de sub-campaña que hay delante, sin el corte de arriba.
+            // Este conjunto contesta a otra pregunta: no «¿es esta entrada la misma cosa
+            // que esa tarjeta?» sino «¿estan ya delante las campañas de las que habla esta
+            // entrada?». Hace falta desde que la entrada se parte por estado, porque el
+            // titulo ya no puede contestarla: un juego con dos entradas y una sola tarjeta
+            // en la pagina puede ser dos cosas distintas —la misma campaña que las dos
+            // fuentes clasifican distinto, o una sub-campaña mas que la pestaña no enseña—
+            // y lo unico que las separa es si la pagina tiene ya esos nombres.
+            const scannedSubNamesTodos = new Set(
+                [].concat(activeItems || [], upcomingItems || [], expiredItems || [])
+                    .reduce((acc, i) => acc.concat(i.subNames || []), [])
+                    .map(n => _fold(String(n).toLowerCase()))
+            );
+            activeItems = (activeItems || []).concat(_apiItemsFor('active', scanned, scannedSubNames, scannedSubNamesTodos));
+            upcomingItems = (upcomingItems || []).concat(_apiItemsFor('upcoming', scanned, scannedSubNames, scannedSubNamesTodos));
+            expiredItems = (expiredItems || []).concat(_apiItemsFor('expired', scanned, scannedSubNames, scannedSubNamesTodos));
             // Render into separate panes (Active tab / Upcoming tab / Expired tab)
             const activePane = document.getElementById("kick-drops-active-pane");
             const upcomingPane = document.getElementById("kick-drops-upcoming-pane");
@@ -6234,7 +6329,7 @@
                     pageMark(t.changedIcon || '🔔', colors.orange, t.changes_detected || '', 'drop-page-bell');
                 }
                 if (status === 'active') {
-                    const drops = _findDropNamesForTitle(displayTitle);
+                    const drops = _findDropNamesForTitle(displayTitle, status);
                     const urgency = _computeUrgency(drops);
                     if (urgency) {
                         // Cuando corre prisa, las dos cosas van juntas en la misma
