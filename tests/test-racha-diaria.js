@@ -43,10 +43,12 @@ const CLAVE = 'kick-daily|' + VENTANA.starts_at;
 // Una alerta del dia YA MARCADA VISTA, tal y como la deja el 👁️. Es lo que sustituye al
 // `kick_daily_streak_reminded_window` de la ✕: ahora el silencio no vive en una clave
 // aparte, vive en el mismo almacen que las demas alertas.
-const vista = (clave) => JSON.stringify([{
+// `cuando` es el instante en que se marco vista, que es lo que el script mira para saber
+// en que DIA DEL CALENDARIO fue. Por defecto ahora mismo.
+const vista = (clave, cuando = AHORA) => JSON.stringify([{
     id: clave, title: 'Recompensa diaria: llevas 0 de 60 min. No pierdas la racha de hoy.',
     key: clave, kind: 'daily', seen: true, changed: true,
-    createdAt: AHORA, updatedAt: AHORA
+    createdAt: cuando, updatedAt: cuando
 }]);
 
 // Los ids van INVENTADOS aunque el resto venga de volcados reales. No son credenciales
@@ -65,14 +67,14 @@ const reto = (progress, threshold, status, extra = {}) => ({
 
 const CASOS = [
     // El caso que lo motiva: el dia empezado y cero minutos vistos.
-    { nombre: 'sin empezar', challenges: [reto(0, 60, 'in_progress')], espera: 'visible', texto: '0 de 60' },
+    { nombre: 'sin empezar', challenges: [reto(0, 60, 'in_progress')], espera: 'visible', texto: '0/60 min' },
     // A medias tambien avisa: pararse en el minuto 25 pierde la racha igual que no empezar.
-    { nombre: 'a medias', challenges: [reto(25, 60, 'in_progress')], espera: 'visible', texto: '25 de 60' },
+    { nombre: 'a medias', challenges: [reto(25, 60, 'in_progress')], espera: 'visible', texto: '25/60 min' },
     // Volcado real acumulando (2026-08-11, 14 de 60). Va aparte del de arriba porque
     // prueba algo distinto: que a mitad de camino el `status` NO cambia, sigue siendo
     // `in_progress`. O sea que el status no dice si ya se puede reclamar, y lo unico que
     // apaga el aviso al llegar al umbral es la comparacion de progress con threshold.
-    { nombre: 'acumulando (volcado real)', challenges: [reto(14, 60, 'in_progress')], espera: 'visible', texto: '14 de 60' },
+    { nombre: 'acumulando (volcado real)', challenges: [reto(14, 60, 'in_progress')], espera: 'visible', texto: '14/60 min' },
     // Cumplido pero con el status todavia en `in_progress`: es el instante entre llegar a
     // los 60 y que Kick lo pase a `claimable`. Sin la comparacion de progress con
     // threshold, aqui el aviso diria «llevas 60 de 60».
@@ -128,7 +130,23 @@ const CASOS = [
         nombre: 'vista ayer',
         challenges: [reto(0, 60, 'in_progress')],
         seed: { kick_drop_notifications: vista('kick-daily|' + medianocheUTC(AHORA - DIA)) },
-        espera: 'visible', texto: '0 de 60'
+        espera: 'visible', texto: '0/60 min'
+    },
+    // LA SEGUNDA ALARMA, y es el caso que la ventana NO cubre: misma ventana, otro dia
+    // del calendario. Pasa todos los dias en cualquier huso al oeste de UTC, porque la
+    // ventana de Kick rueda a medianoche UTC —las 18:00 en UTC−6— y se come seis horas
+    // del dia siguiente.
+    //
+    // Reportado el 2026-09-21: marcarla vista por la noche la callaba hasta las 18:00 del
+    // dia siguiente, o sea hasta el instante en que ya se habia perdido la racha. El caso
+    // «ya vista» de mas arriba es su control: ese lleva el mismo `updatedAt` de hoy y
+    // tiene que seguir callado, asi que lo que enciende este no es el paso del tiempo
+    // sino el cambio de fecha.
+    {
+        nombre: 'vista anoche, misma ventana',
+        challenges: [reto(0, 60, 'in_progress')],
+        seed: { kick_drop_notifications: vista(CLAVE, AHORA - DIA) },
+        espera: 'visible', texto: '0/60 min'
     }
 ];
 
@@ -178,12 +196,16 @@ const CASOS = [
         const marcado = (r.titulo || '').startsWith('(1)');
         if (c.espera === 'visible') {
             if (!marcado) fallos.push(`${c.nombre}: el titulo no lleva la cuenta -> "${r.titulo}"`);
-            // EN BUCLE, no una vez. El pitido de una sola vez se justificaba en que el
-            // aviso se apagaba solo al ver 60 minutos y un bucle seria una hora de
-            // castigo; ahora se calla con el 👁️, o sea con un clic, igual que los demas.
-            // Se piden >= 2 y no un numero exacto porque el bucle va cada 5 s y la espera
-            // del arnes no cae siempre en el mismo punto.
-            if (r.beeps < 2) fallos.push(`${c.nombre}: pito ${r.beeps} veces, tenia que sonar en bucle`);
+            // UNA VEZ, y no en bucle. El bucle se justificaba mientras el aviso se
+            // apagaba con un clic; desde el 2026-09-22 el medidor se queda en «en riesgo»
+            // hasta que salves la racha —solo se calla el RUIDO— y repetir cada 5 s
+            // durante la hora que cuesta el cofre seria castigo, no recordatorio.
+            //
+            // Exactamente 1: es lo que distingue «suena una vez por episodio» de «no
+            // suena» y de «sigue el bucle». Un episodio es la ventana del reto mas el dia
+            // de tu calendario, que son los dos instantes en que la racha vuelve a estar
+            // en juego.
+            if (r.beeps !== 1) fallos.push(`${c.nombre}: pito ${r.beeps} veces, tenia que sonar UNA`);
         } else {
             if (marcado) fallos.push(`${c.nombre}: el titulo lleva cuenta sin aviso -> "${r.titulo}"`);
             if (r.beeps !== 0) fallos.push(`${c.nombre}: pito ${r.beeps} veces sin aviso`);
@@ -222,8 +244,11 @@ const CASOS = [
             titulo: r2.titulo, pitidos: r2.beeps
         }));
         if (!r2.racha.visible) fallos.push('tras el relevo el aviso no volvio');
-        if (!texto.includes('5 de 60')) fallos.push(`tras el relevo no adopto el reto nuevo -> "${texto}"`);
-        if (r2.beeps < 2) fallos.push(`tras el relevo pito ${r2.beeps} veces, tenia que seguir en bucle`);
+        if (!texto.includes('5/60 min')) fallos.push(`tras el relevo no adopto el reto nuevo -> "${texto}"`);
+        // DOS pitidos y no mas: uno por episodio, y aqui hay dos —el reto de la ventana
+        // vieja y el de la nueva—. Con el bucle de antes esto no distinguia nada; ahora es
+        // lo que prueba que el relevo cuenta como aviso nuevo y no como repeticion.
+        if (r2.beeps !== 2) fallos.push(`tras el relevo pito ${r2.beeps} veces, tenian que ser 2 (uno por ventana)`);
     }
 
     // Y EL 👁️, que es lo que sustituye a la ✕. Marca el aviso vista y con el se van la
@@ -241,7 +266,14 @@ const CASOS = [
     });
     const tras = r.racha.existe ? await r.racha.marcarVista() : null;
     console.log(JSON.stringify({ caso: 'pulsar el 👁️', tras }));
-    if (!tras || tras.visible) fallos.push('el 👁️ no quito el aviso de la lista');
+    if (!tras || tras.visible) fallos.push('el 👁️ no callo el aviso: sigue ofreciendo silenciarlo');
+    // Y LO QUE NO PUEDE HABER HECHO: llevarse el medidor. Es la mitad del cambio del
+    // 2026-09-22 —«lo que se descarta es el sonido, el aviso sigue hasta salvar la
+    // racha»— y sin este control, silenciar y borrar darian el mismo verde.
+    if (!tras || !tras.medidorSigue)
+        fallos.push('el 👁️ se llevo el medidor: tenia que quedarse hasta salvar la racha');
+    if (!tras || !/0\/60 min/.test(tras.texto || ''))
+        fallos.push(`el medidor dejo de decir lo que falta -> "${tras && tras.texto}"`);
     if (!tras || tras.solapa !== '🔔 (0)')
         fallos.push(`el 👁️ dejo la solapa en "${tras && tras.solapa}"`);
     // Darla por vista lo apaga ENTERO: la cuenta del titulo se va con la fila. Sin esto se

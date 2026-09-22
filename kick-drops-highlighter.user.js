@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.19
+// @version      1.3.20
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.19";
+    const SCRIPT_VERSION = "1.3.20";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -69,6 +69,22 @@
     // dia del reto y el del calendario se habrian separado seis horas.
     const KICK_CHALLENGES_URL = 'https://web.kick.com/api/v1/gamification/challenges';
     let _kickChallenges = null;
+
+    // LA RACHA, Y SOLO EL NUMERO DE DIAS.
+    //
+    // El reto de `/challenges` NO la trae. Medido el 2026-09-22 volcando la respuesta
+    // entera: de primer nivel solo `data` y `message`, y dentro del reto solo
+    // `condition`, `recurrence`, `status`, `window`, `drop_table` e `id`. O sea que no
+    // habia un campo hermano tirandose sin que nadie lo supiera: el dato no esta ahi.
+    //
+    // Donde si esta es en `/api/v1/gamification/users/<id>/streak`, que contesta
+    // exactamente `{"data":{"length_days":1},"message":"success"}` (verificado el mismo
+    // dia, dos veces). Esa ruta lleva TU ID en el camino, y de aqui no sale: no se lee,
+    // no se guarda y no se compone la URL a mano —la pide la propia pagina al abrir el
+    // modal del cofre y esto solo mira el cuerpo, que es un numero suelto—. Es la misma
+    // promesa que ya hace la ficha del script sobre los datos de la cuenta.
+    let _kickStreakDays = null;
+    let _onStreakReady = null;
 
     // Solo tratamos como "de Kick" las URLs que resuelven a kick.com. Las
     // relativas se resuelven contra la pagina, que ya es kick.com. Sin esta
@@ -484,6 +500,20 @@
                     }
                 }).catch(() => { });
             }
+            // La racha. La pide la propia pagina al abrir el modal del cofre, asi que
+            // aqui no se compone ninguna URL: se reconoce la que pasa y se lee su cuerpo.
+            // El `<id>` del camino se acepta como comodin y no se captura (ver arriba).
+            if (isKick && /^\/api\/v1\/gamification\/users\/[^/]+\/streak$/
+                    .test(new URL(url, location.href).pathname)) {
+                response.clone().json().then(data => {
+                    const dias = Number(data && data.data && data.data.length_days);
+                    // Un 0 es una racha de verdad —la que se perdio—, asi que la guarda
+                    // es por finitud y no por verdad.
+                    if (!Number.isFinite(dias) || dias < 0) return;
+                    _kickStreakDays = dias;
+                    if (_onStreakReady) setTimeout(() => _onStreakReady(), 0);
+                }).catch(() => { });
+            }
         } catch (e) { /* noop */ }
         return response;
     };
@@ -532,7 +562,7 @@
                 scriptInfoName: "Nombre:",
                 scriptInfoVersion: "Version:",
                 scriptInfoDescription: "Descripcion:",
-                scriptInfoDescriptionText: "Resalta en la propia página las campañas de drops que coinciden con tus keywords: verde en la pestaña de campañas, azul en la de próximas y rojo en la de cerradas. El panel las lista separadas en abiertos, próximos y cerrados —las tres a la vez, porque las saca de la API: las pestañas de Kick recargan la página, así que leyendo solo lo que hay delante nunca se verían juntas—, con la ventana de fechas, la keyword que la encontró y cada recompensa con las horas que pide. Una keyword casa en cualquier parte del texto, así que «rage» encuentra una campaña llamada «averageaden $5 Bonus»; la etiqueta de la tarjeta dice cuál fue, para que ninguna aparezca sin explicar por qué. Las recompensas que ya tienes van con ✓ y tachadas, una a una, y el badge que no tiene nada pendiente se queda sin su tiempo. Lo que ya te ganaste y no has recogido va aparte, con 🎁 y sin atenuar, porque solo le falta un clic, y el aviso de cierre tambien los cuenta. Lo que está por cerrar va primero: cuando a una recompensa que aún no tienes se le acaba el tiempo en menos de 72 h, su tarjeta dice cuánto queda y cuánto te falta por ver —rojo por debajo de 24 h— o que ya no da tiempo, y el mismo ⏳ cae en la tarjeta de la campaña en la página. Las próximas llevan también sus recompensas y lo que cuesta cada tramo, pero nunca un plazo: antes de que abra no corre prisa nada, y una cuenta atrás el día antes solo alarma. Y una cerrada que ya reclamaste entera no se lista, porque Kick la mueve a reclamados: el panel no enseña filas que la página no tiene. Keywords editables: clic en una para borrarla, + para añadir, editarlas en bloque o restaurar las predeterminadas. Una keyword que empieza por «-» descarta: «-console» deja fuera la campaña aunque otra keyword la hubiera encontrado, y se lleva con ella el resaltado, la tarjeta y el aviso. Y cuatro filtros de vista recortan la lista de abiertos sin tocar nada mas —lo que aun te falta, lo que cierra pronto, lo que ya ganaste y no has recogido, y lo que se saca en una hora o menos—: se suman entre si, se recuerdan, y la pestaña dice cuantas tarjetas se ven de cuantas hay. La lista de abiertos se ordena por lo que antes cierra o por lo que menos tiempo te pide, a eleccion. Y cada campaña abierta lleva en su propia tarjeta de la pagina el tiempo que te falta para llevarte todo lo que queda —su recompensa mas cara, porque el tiempo visto es por campaña—, de modo que el coste se ve haciendo scroll. Las campañas abiertas y las proximas se copian como texto con el 🔗: titulo, fechas y recompensas, con el enlace a la pestaña donde viven —abiertas o proximas—, porque en Kick una campaña no tiene direccion propia. Si no llegan tus datos de reclamado y visto —sin ellos no se sabe que tienes ni cuanto llevas—, el panel lo dice en vez de quedarse callado con las marcas apagadas. Donde Kick pinte una barra de progreso, pasar el raton dice cuanto tiempo de visualizacion te falta exactamente, y pulsar abre el detalle del drop. En la pestaña de reclamados se pinta una rejilla propia que ademas dice cuanto hace que conseguiste cada cosa, y sustituye a la lista de Kick para no enseñar lo mismo dos veces. La casilla oculta lo completado y activa la reclamación automática, tanto de los drops terminados como del cofre de recompensa diaria que Kick da por ver streams (que no es un drop): el cofre se abre solo cuando la recompensa está disponible, se detecta sin depender del idioma y se revisa siempre después de los drops, nunca en medio. Y reclama tambien en la pestaña de cerradas: lo que caduca con la campaña es el progreso, no lo que ya te ganaste, asi que una recompensa que desbloqueaste antes del cierre se sigue cobrando desde ahi. Y lo completado que oculta incluye la recompensa que ya reclamaste, que Kick deja en la página como una baldosa pelada: lo que decide que está reclamada son tus datos de reclamado, no la forma de la página. Y el cofre sale además como una baldosa más de esa rejilla, con la barra de progreso de Kick: los minutos de visualización que le faltan —el ratón encima los dice, y un clic abre el modal del cofre sin reclamar nada—, que se reclamará solo al llegar al final, y —en cuanto se pueda cobrar— un botón que lo cobra y deja abierto el resultado de Kick. Y solo la de hoy: cerrada la ventana del día, la baldosa desaparece hasta que llega el reto nuevo. Marca con 🔔 —en el panel y en la propia tarjeta— las campañas que cambiaron desde la última vez, con una cuenta de pendientes, notificación de escritorio y un botón 👁️ que las da por vistas y te lleva a la pestaña de campañas. 16 idiomas.",
+                scriptInfoDescriptionText: "Resalta en la propia página las campañas de drops que coinciden con tus keywords: verde en la pestaña de campañas, azul en la de próximas y rojo en la de cerradas. El panel las lista separadas en abiertos, próximos y cerrados —las tres a la vez, porque las saca de la API: las pestañas de Kick recargan la página, así que leyendo solo lo que hay delante nunca se verían juntas—, con la ventana de fechas, la keyword que la encontró y cada recompensa con las horas que pide. Una keyword casa en cualquier parte del texto, así que «rage» encuentra una campaña llamada «averageaden $5 Bonus»; la etiqueta de la tarjeta dice cuál fue, para que ninguna aparezca sin explicar por qué. Las recompensas que ya tienes van con ✓ y tachadas, una a una, y el badge que no tiene nada pendiente se queda sin su tiempo. Lo que ya te ganaste y no has recogido va aparte, con 🎁 y sin atenuar, porque solo le falta un clic, y el aviso de cierre tambien los cuenta. Lo que está por cerrar va primero: cuando a una recompensa que aún no tienes se le acaba el tiempo en menos de 72 h, su tarjeta dice cuánto queda y cuánto te falta por ver —rojo por debajo de 24 h— o que ya no da tiempo, y el mismo ⏳ cae en la tarjeta de la campaña en la página. Las próximas llevan también sus recompensas y lo que cuesta cada tramo, pero nunca un plazo: antes de que abra no corre prisa nada, y una cuenta atrás el día antes solo alarma. Y una cerrada que ya reclamaste entera no se lista, porque Kick la mueve a reclamados: el panel no enseña filas que la página no tiene. Keywords editables: clic en una para borrarla, + para añadir, editarlas en bloque o restaurar las predeterminadas. Una keyword que empieza por «-» descarta: «-console» deja fuera la campaña aunque otra keyword la hubiera encontrado, y se lleva con ella el resaltado, la tarjeta y el aviso. Y cuatro filtros de vista recortan la lista de abiertos sin tocar nada mas —lo que aun te falta, lo que cierra pronto, lo que ya ganaste y no has recogido, y lo que se saca en una hora o menos—: se suman entre si, se recuerdan, y la pestaña dice cuantas tarjetas se ven de cuantas hay. La lista de abiertos se ordena por lo que antes cierra o por lo que menos tiempo te pide, a eleccion. Y cada campaña abierta lleva en su propia tarjeta de la pagina el tiempo que te falta para llevarte todo lo que queda —su recompensa mas cara, porque el tiempo visto es por campaña—, de modo que el coste se ve haciendo scroll. Las campañas abiertas y las proximas se copian como texto con el 🔗: titulo, fechas y recompensas, con el enlace a la pestaña donde viven —abiertas o proximas—, porque en Kick una campaña no tiene direccion propia. Si no llegan tus datos de reclamado y visto —sin ellos no se sabe que tienes ni cuanto llevas—, el panel lo dice en vez de quedarse callado con las marcas apagadas. Donde Kick pinte una barra de progreso, pasar el raton dice cuanto tiempo de visualizacion te falta exactamente, y pulsar abre el detalle del drop. En la pestaña de reclamados se pinta una rejilla propia que ademas dice cuanto hace que conseguiste cada cosa, y sustituye a la lista de Kick para no enseñar lo mismo dos veces. La casilla oculta lo completado y activa la reclamación automática, tanto de los drops terminados como del cofre de recompensa diaria que Kick da por ver streams (que no es un drop): el cofre se abre solo cuando la recompensa está disponible, se detecta sin depender del idioma y se revisa siempre después de los drops, nunca en medio. Y reclama tambien en la pestaña de cerradas: lo que caduca con la campaña es el progreso, no lo que ya te ganaste, asi que una recompensa que desbloqueaste antes del cierre se sigue cobrando desde ahi. Y lo completado que oculta incluye la recompensa que ya reclamaste, que Kick deja en la página como una baldosa pelada: lo que decide que está reclamada son tus datos de reclamado, no la forma de la página. Y el cofre sale además como una baldosa más de esa rejilla, con la barra de progreso de Kick: los minutos de visualización que le faltan —el ratón encima los dice, y un clic abre el modal del cofre sin reclamar nada—, que se reclamará solo al llegar al final, y —en cuanto se pueda cobrar— un botón que lo cobra y deja abierto el resultado de Kick. Y solo la de hoy: cerrada la ventana del día, la baldosa desaparece hasta que llega el reto nuevo. Marca con 🔔 —en el panel y en la propia tarjeta— las campañas que cambiaron desde la última vez, con una cuenta de pendientes, notificación de escritorio y un botón 👁️ que las da por vistas y te lleva a la pestaña de campañas. Y la racha diaria ya no es una fila más: el panel pinta el medidor del cofre —días encadenados, minutos vistos, cuándo se reinicia y si está a salvo—, que no se descarta hasta salvarla; el 👁️ solo calla el pitido y la cuenta, suena una vez por día y por ventana, y con la casilla puesta el panel se planta en esa pestaña hasta que la racha esté a salvo. 16 idiomas.",
                 scriptInfoAuthor: "Autor:",
                 scriptInfoGitHub: "GitHub:",
                 scriptInfoPrivacy: "Privacidad:",
@@ -556,6 +586,12 @@
                 remainingToFinish: "lo que te falta para llevártelo todo de aquí",
                 noInventoryData: "Sin inventario: no se sabe qué tienes reclamado ni cuánto llevas visto.",
                 dailyStreakReminder: "Recompensa diaria: llevas {done} de {total} min. No pierdas la racha de hoy.",
+                streakLabel: "Racha",
+                streakResetsIn: "se reinicia en {t}",
+                streakSafe: "a salvo hoy",
+                streakAtRisk: "en riesgo hoy",
+                streakRead: "Pulsa para leer tu racha: abre y cierra el cofre de Kick, que es quien la trae",
+                streakSilence: "Callar el aviso. El medidor se queda hasta que salves la racha, y volverá a sonar mañana si sigue sin hacerse",
                 urgentClosesIn: "cierra en",
                 urgentNeed: "te faltan",
                 urgentMinimum: "lo mínimo",
@@ -616,7 +652,7 @@
                 scriptInfoName: "Name:",
                 scriptInfoVersion: "Version:",
                 scriptInfoDescription: "Description:",
-                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page: green on the campaigns tab, blue on coming soon, red on expired. The panel lists them split into active, upcoming and expired —all three at once, because it reads them from the API: Kick's tabs reload the page, so reading only what is in front of you they would never be seen together—, with the date window, the keyword that matched and each reward with the hours it needs. A keyword matches anywhere in the text, so \"rage\" finds a campaign called \"averageaden $5 Bonus\"; the card says which keyword it was, so none of them shows up without explaining why. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Upcoming campaigns also carry their rewards and what each tier costs, but never a deadline: nothing is urgent before it opens, and a countdown the day before only alarms. And a closed campaign you already claimed in full is not listed, because Kick moves it to claimed: the panel does not show rows the page does not have. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need to take everything that is left —its most expensive reward, because the watch time is per campaign—, so the cost is visible while scrolling. Open and upcoming campaigns can be copied as text with the 🔗: title, dates and rewards, with a link to the tab they live in —campaigns or coming soon— because in Kick a campaign has no address of its own. If your claimed-and-watched data never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. Wherever Kick draws a progress bar, hovering says exactly how much watch time you still need, and clicking opens the drop details. The claimed tab gets a grid of its own that also says how long ago you got each thing, and it replaces Kick's list so the same thing is not shown twice. The checkbox hides what is completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. And it claims on the expired tab too: what ends with the campaign is the progress, not what you already earned, so a reward you unlocked before it closed is still collected from there. And what it hides includes the reward you already claimed, which Kick leaves on the page as a bare tile: what decides it is claimed is your claimed-and-watched data, not the shape of the page. And that chest also shows up as one more tile in the grid, with Kick's own progress bar: the watch minutes it still needs —hovering says them, and a click opens the chest's modal without claiming anything—, that it will be claimed by itself once they are done, and —as soon as it can be claimed— a button that claims it and leaves Kick's result open. And only today's: once the day window closes the tile goes away until the new challenge arrives. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that marks them as seen and takes you to the campaigns tab. 16 languages.",
+                scriptInfoDescriptionText: "Highlights the drop campaigns matching your keywords on the page: green on the campaigns tab, blue on coming soon, red on expired. The panel lists them split into active, upcoming and expired —all three at once, because it reads them from the API: Kick's tabs reload the page, so reading only what is in front of you they would never be seen together—, with the date window, the keyword that matched and each reward with the hours it needs. A keyword matches anywhere in the text, so \"rage\" finds a campaign called \"averageaden $5 Bonus\"; the card says which keyword it was, so none of them shows up without explaining why. Rewards you already own are ticked and struck through one by one, and a badge with nothing left to earn drops the watch time it asked for. What you already earned but have not collected is flagged apart with 🎁 —not dimmed— because it only needs a click, and the closing warning counts those too. What is about to close comes first: when a reward you do not own yet runs out of time within 72 hours, its card says how long is left and how much watch time you still need —red under 24 hours— or that it no longer fits, and the same ⏳ lands on the campaign's card on the page. Upcoming campaigns also carry their rewards and what each tier costs, but never a deadline: nothing is urgent before it opens, and a countdown the day before only alarms. And a closed campaign you already claimed in full is not listed, because Kick moves it to claimed: the panel does not show rows the page does not have. Keywords are editable: click one to delete it, + to add, edit them in bulk or reset to the defaults. A keyword starting with \"-\" excludes: \"-console\" drops the campaign even if another keyword had found it, and takes the highlight, the card and the alert with it. And four view filters trim the open list without touching anything else —what you still have left, what closes soon, what you already earned and have not collected, and what takes an hour or less—: they add up, they are remembered, and the tab says how many cards are showing out of how many there are. The open list is sorted by whatever closes first or by whatever asks the least time, your choice. And every open campaign carries, on its own card on the page, the time you still need to take everything that is left —its most expensive reward, because the watch time is per campaign—, so the cost is visible while scrolling. Open and upcoming campaigns can be copied as text with the 🔗: title, dates and rewards, with a link to the tab they live in —campaigns or coming soon— because in Kick a campaign has no address of its own. If your claimed-and-watched data never arrives —without it there is no telling what you own or how much you have watched— the panel says so instead of going quiet with its marks switched off. Wherever Kick draws a progress bar, hovering says exactly how much watch time you still need, and clicking opens the drop details. The claimed tab gets a grid of its own that also says how long ago you got each thing, and it replaces Kick's list so the same thing is not shown twice. The checkbox hides what is completed and turns on automatic claiming, both of finished drops and of the daily reward chest Kick gives for watching streams (which is not a drop): the chest is only opened when the reward is actually available, it is detected without relying on language, and it is always checked after the drops, never during. And it claims on the expired tab too: what ends with the campaign is the progress, not what you already earned, so a reward you unlocked before it closed is still collected from there. And what it hides includes the reward you already claimed, which Kick leaves on the page as a bare tile: what decides it is claimed is your claimed-and-watched data, not the shape of the page. And that chest also shows up as one more tile in the grid, with Kick's own progress bar: the watch minutes it still needs —hovering says them, and a click opens the chest's modal without claiming anything—, that it will be claimed by itself once they are done, and —as soon as it can be claimed— a button that claims it and leaves Kick's result open. And only today's: once the day window closes the tile goes away until the new challenge arrives. It flags campaigns that changed since you last looked with a 🔔 —in the panel and on the card itself— plus a pending count, a desktop notification and an 👁️ button that marks them as seen and takes you to the campaigns tab. And the daily streak is no longer one more row: the panel draws the chest's meter —days chained, minutes watched, when it resets and whether it is safe—, and it cannot be dismissed until you save it; the 👁️ only silences the beep and the count, it sounds once per day and per window, and with the checkbox ticked the panel plants itself on that tab until the streak is safe. 16 languages.",
                 scriptInfoAuthor: "Author:",
                 scriptInfoGitHub: "GitHub:",
                 scriptInfoPrivacy: "Privacy:",
@@ -640,6 +676,12 @@
                 remainingToFinish: "what you still need to take everything from here",
                 noInventoryData: "No inventory: what you own and how much you have watched are unknown.",
                 dailyStreakReminder: "Daily reward: {done} of {total} min watched. Do not lose today's streak.",
+                streakLabel: "Streak",
+                streakResetsIn: "resets in {t}",
+                streakSafe: "safe today",
+                streakAtRisk: "at risk today",
+                streakRead: "Click to read your streak: it opens and closes Kick's chest, which is what carries it",
+                streakSilence: "Silence the alert. The meter stays until you save the streak, and it will sound again tomorrow if it is still undone",
                 urgentClosesIn: "closes in",
                 urgentNeed: "you still need",
                 urgentMinimum: "minimum",
@@ -693,7 +735,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Skript-Informationen", scriptInfoName: "Name:",
                 scriptInfoVersion: "Version:", scriptInfoDescription: "Beschreibung:",
-                scriptInfoDescriptionText: "Hebt die Drop-Kampagnen, die zu deinen Keywords passen, direkt auf der Seite hervor: grün im Tab Kampagnen, blau bei Demnächst, rot bei Beendet. Das Panel listet sie getrennt nach aktiv, demnächst und beendet auf —alle drei auf einmal, weil es sie aus der API liest: Kicks Tabs laden die Seite neu, und wer nur liest, was gerade vor ihm liegt, bekäme sie nie zusammen zu sehen—, mit dem Zeitraum, dem Keyword, das getroffen hat, und jeder Belohnung samt der Stunden, die sie verlangt. Ein Keyword trifft an jeder Stelle des Textes, deshalb findet „rage“ eine Kampagne namens „averageaden $5 Bonus“; die Karte sagt, welches Keyword es war, damit keine ohne Erklärung auftaucht. Belohnungen, die du schon hast, werden einzeln abgehakt und durchgestrichen, und einem Abzeichen, bei dem nichts mehr zu holen ist, fällt die Zeitangabe weg. Was du schon verdient, aber nicht abgeholt hast, steht mit 🎁 gesondert da —nicht abgeblendet—, weil nur noch ein Klick fehlt, und die Ablaufwarnung zählt es mit. Was bald endet, steht oben: Wenn einer Belohnung, die dir noch fehlt, innerhalb von 72 Stunden die Zeit ausgeht, sagt ihre Karte, wie lange noch bleibt und wie viel Sehzeit dir fehlt —rot unter 24 Stunden— oder dass es nicht mehr reicht, und dasselbe ⏳ landet auf der Karte der Kampagne auf der Seite. Kommende Kampagnen tragen ebenfalls ihre Belohnungen und den Preis jeder Stufe, aber niemals eine Frist: vor dem Start ist nichts dringend, und ein Countdown am Vortag beunruhigt nur. Und eine beendete Kampagne, die du schon vollständig abgeholt hast, wird nicht aufgeführt, weil Kick sie zu den Abgeholten verschiebt: das Panel zeigt keine Zeilen, die die Seite nicht hat. Keywords sind editierbar: klicke eines an, um es zu löschen, + zum Hinzufügen, alle auf einmal bearbeiten oder die Standardwerte wiederherstellen. Ein Keyword, das mit „-“ beginnt, schließt aus: „-console“ wirft die Kampagne hinaus, auch wenn ein anderes Keyword sie gefunden hatte, und nimmt Hervorhebung, Karte und Hinweis mit. Und vier Ansichtsfilter kürzen die Liste der offenen, ohne sonst etwas anzufassen —was dir noch fehlt, was bald endet, was du verdient und nicht abgeholt hast, und was in einer Stunde oder weniger drin ist—: Sie greifen zusammen, sie werden gemerkt, und der Tab sagt, wie viele Karten von wie vielen zu sehen sind. Die Liste der offenen wird danach sortiert, was zuerst endet, oder danach, was am wenigsten Zeit verlangt, ganz wie du willst. Und jede offene Kampagne trägt auf ihrer eigenen Karte auf der Seite die Zeit, die dir fehlt, um alles Übrige mitzunehmen —ihre teuerste Belohnung, denn die Sehzeit zählt pro Kampagne—, damit die Kosten beim Scrollen sichtbar sind. Offene und kommende Kampagnen lassen sich mit dem 🔗 als Text kopieren: Titel, Zeitraum und Belohnungen, mit einem Link auf den Tab, in dem sie leben —Kampagnen oder Demnächst—, denn bei Kick hat eine Kampagne keine eigene Adresse. Wenn deine Daten zu Abgeholtem und Gesehenem nie ankommen —ohne sie lässt sich nicht sagen, was du hast oder wie viel du gesehen hast—, sagt das Panel es, statt mit abgeschalteten Markierungen zu schweigen. Überall, wo Kick einen Fortschrittsbalken zeichnet, sagt ein Zeigen mit der Maus genau, wie viel Sehzeit dir noch fehlt, und ein Klick öffnet die Details des Drops. Der Tab der abgeholten bekommt ein eigenes Raster, das außerdem sagt, wie lange es her ist, dass du jedes Stück bekommen hast, und es ersetzt Kicks Liste, damit dasselbe nicht zweimal dasteht. Das Kontrollkästchen blendet Erledigtes aus und schaltet das automatische Abholen ein, sowohl der fertigen Drops als auch der täglichen Belohnungstruhe, die Kick fürs Streams-Schauen gibt (die kein Drop ist): Die Truhe wird nur geöffnet, wenn die Belohnung wirklich verfügbar ist, sie wird ohne Sprachabhängigkeit erkannt, und sie wird immer nach den Drops geprüft, nie mittendrin. Und sie holt auch im Tab der beendeten Kampagnen ab: Mit der Kampagne endet der Fortschritt, nicht das, was du dir schon verdient hast, also wird eine vor dem Ende freigeschaltete Belohnung weiterhin von dort abgeholt. Und zu dem Erledigten, das es ausblendet, gehört auch die schon abgeholte Belohnung, die Kick als kahle Kachel auf der Seite stehen lässt: worüber entschieden wird, sind deine Daten zu Abgeholtem, nicht die Form der Seite. Und die Truhe erscheint zusätzlich als weitere Kachel im Raster, mit Kicks Fortschrittsbalken: die noch fehlenden Zuschauminuten —der Mauszeiger nennt sie, und ein Klick öffnet ihr Fenster, ohne etwas abzuholen—, dass sie am Ende von selbst abgeholt wird, und —sobald es geht— eine Schaltfläche, die sie abholt und Kicks Ergebnis offen lässt. Und nur die von heute: ist das Tagesfenster zu, verschwindet die Kachel, bis die neue Aufgabe kommt. Kampagnen, die sich seit deinem letzten Blick geändert haben, bekommen ein 🔔 —im Panel und auf der Karte selbst—, dazu einen Zähler der offenen, eine Desktop-Benachrichtigung und einen 👁️-Knopf, der sie als gesehen markiert und dich zum Tab Kampagnen bringt. 16 Sprachen.",
+                scriptInfoDescriptionText: "Hebt die Drop-Kampagnen, die zu deinen Keywords passen, direkt auf der Seite hervor: grün im Tab Kampagnen, blau bei Demnächst, rot bei Beendet. Das Panel listet sie getrennt nach aktiv, demnächst und beendet auf —alle drei auf einmal, weil es sie aus der API liest: Kicks Tabs laden die Seite neu, und wer nur liest, was gerade vor ihm liegt, bekäme sie nie zusammen zu sehen—, mit dem Zeitraum, dem Keyword, das getroffen hat, und jeder Belohnung samt der Stunden, die sie verlangt. Ein Keyword trifft an jeder Stelle des Textes, deshalb findet „rage“ eine Kampagne namens „averageaden $5 Bonus“; die Karte sagt, welches Keyword es war, damit keine ohne Erklärung auftaucht. Belohnungen, die du schon hast, werden einzeln abgehakt und durchgestrichen, und einem Abzeichen, bei dem nichts mehr zu holen ist, fällt die Zeitangabe weg. Was du schon verdient, aber nicht abgeholt hast, steht mit 🎁 gesondert da —nicht abgeblendet—, weil nur noch ein Klick fehlt, und die Ablaufwarnung zählt es mit. Was bald endet, steht oben: Wenn einer Belohnung, die dir noch fehlt, innerhalb von 72 Stunden die Zeit ausgeht, sagt ihre Karte, wie lange noch bleibt und wie viel Sehzeit dir fehlt —rot unter 24 Stunden— oder dass es nicht mehr reicht, und dasselbe ⏳ landet auf der Karte der Kampagne auf der Seite. Kommende Kampagnen tragen ebenfalls ihre Belohnungen und den Preis jeder Stufe, aber niemals eine Frist: vor dem Start ist nichts dringend, und ein Countdown am Vortag beunruhigt nur. Und eine beendete Kampagne, die du schon vollständig abgeholt hast, wird nicht aufgeführt, weil Kick sie zu den Abgeholten verschiebt: das Panel zeigt keine Zeilen, die die Seite nicht hat. Keywords sind editierbar: klicke eines an, um es zu löschen, + zum Hinzufügen, alle auf einmal bearbeiten oder die Standardwerte wiederherstellen. Ein Keyword, das mit „-“ beginnt, schließt aus: „-console“ wirft die Kampagne hinaus, auch wenn ein anderes Keyword sie gefunden hatte, und nimmt Hervorhebung, Karte und Hinweis mit. Und vier Ansichtsfilter kürzen die Liste der offenen, ohne sonst etwas anzufassen —was dir noch fehlt, was bald endet, was du verdient und nicht abgeholt hast, und was in einer Stunde oder weniger drin ist—: Sie greifen zusammen, sie werden gemerkt, und der Tab sagt, wie viele Karten von wie vielen zu sehen sind. Die Liste der offenen wird danach sortiert, was zuerst endet, oder danach, was am wenigsten Zeit verlangt, ganz wie du willst. Und jede offene Kampagne trägt auf ihrer eigenen Karte auf der Seite die Zeit, die dir fehlt, um alles Übrige mitzunehmen —ihre teuerste Belohnung, denn die Sehzeit zählt pro Kampagne—, damit die Kosten beim Scrollen sichtbar sind. Offene und kommende Kampagnen lassen sich mit dem 🔗 als Text kopieren: Titel, Zeitraum und Belohnungen, mit einem Link auf den Tab, in dem sie leben —Kampagnen oder Demnächst—, denn bei Kick hat eine Kampagne keine eigene Adresse. Wenn deine Daten zu Abgeholtem und Gesehenem nie ankommen —ohne sie lässt sich nicht sagen, was du hast oder wie viel du gesehen hast—, sagt das Panel es, statt mit abgeschalteten Markierungen zu schweigen. Überall, wo Kick einen Fortschrittsbalken zeichnet, sagt ein Zeigen mit der Maus genau, wie viel Sehzeit dir noch fehlt, und ein Klick öffnet die Details des Drops. Der Tab der abgeholten bekommt ein eigenes Raster, das außerdem sagt, wie lange es her ist, dass du jedes Stück bekommen hast, und es ersetzt Kicks Liste, damit dasselbe nicht zweimal dasteht. Das Kontrollkästchen blendet Erledigtes aus und schaltet das automatische Abholen ein, sowohl der fertigen Drops als auch der täglichen Belohnungstruhe, die Kick fürs Streams-Schauen gibt (die kein Drop ist): Die Truhe wird nur geöffnet, wenn die Belohnung wirklich verfügbar ist, sie wird ohne Sprachabhängigkeit erkannt, und sie wird immer nach den Drops geprüft, nie mittendrin. Und sie holt auch im Tab der beendeten Kampagnen ab: Mit der Kampagne endet der Fortschritt, nicht das, was du dir schon verdient hast, also wird eine vor dem Ende freigeschaltete Belohnung weiterhin von dort abgeholt. Und zu dem Erledigten, das es ausblendet, gehört auch die schon abgeholte Belohnung, die Kick als kahle Kachel auf der Seite stehen lässt: worüber entschieden wird, sind deine Daten zu Abgeholtem, nicht die Form der Seite. Und die Truhe erscheint zusätzlich als weitere Kachel im Raster, mit Kicks Fortschrittsbalken: die noch fehlenden Zuschauminuten —der Mauszeiger nennt sie, und ein Klick öffnet ihr Fenster, ohne etwas abzuholen—, dass sie am Ende von selbst abgeholt wird, und —sobald es geht— eine Schaltfläche, die sie abholt und Kicks Ergebnis offen lässt. Und nur die von heute: ist das Tagesfenster zu, verschwindet die Kachel, bis die neue Aufgabe kommt. Kampagnen, die sich seit deinem letzten Blick geändert haben, bekommen ein 🔔 —im Panel und auf der Karte selbst—, dazu einen Zähler der offenen, eine Desktop-Benachrichtigung und einen 👁️-Knopf, der sie als gesehen markiert und dich zum Tab Kampagnen bringt. Und die tägliche Serie ist keine Zeile mehr: Das Panel zeichnet die Anzeige der Truhe —verkettete Tage, geschaute Minuten, wann sie zurückgesetzt wird und ob sie sicher ist— und sie lässt sich nicht wegklicken, bevor du die Serie rettest; das 👁️ schaltet nur den Ton und die Zählung stumm, es meldet sich einmal pro Tag und pro Fenster, und mit gesetztem Kästchen bleibt das Panel auf diesem Reiter, bis die Serie sicher ist. 16 Sprachen.",
                 scriptInfoAuthor: "Autor:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Drop-Änderungen werden von der API gelesen...",
                 earnedUnclaimed: "verdient, nicht abgeholt",
@@ -712,6 +754,12 @@
                 sortCheapestHint: "Sortiert danach, was am wenigsten verlangt, um überhaupt etwas zu bekommen. Das ⏱ auf der Karte ist eine andere Rechnung: was es kostet, alles mitzunehmen.",
                 noInventoryData: "Kein Inventar: unbekannt, was du hast und wie viel du geschaut hast.",
                 dailyStreakReminder: "Tägliche Belohnung: {done} von {total} Min. geschaut. Verliere heute nicht deine Serie.",
+                streakLabel: "Serie",
+                streakResetsIn: "Reset in {t}",
+                streakSafe: "heute sicher",
+                streakAtRisk: "heute in Gefahr",
+                streakRead: "Klicken, um deine Serie zu lesen: öffnet und schließt Kicks Truhe, die sie liefert",
+                streakSilence: "Hinweis stummschalten. Die Anzeige bleibt, bis du die Serie rettest, und meldet sich morgen wieder, wenn sie offen bleibt",
                 urgentClosesIn: "endet in",
                 urgentNeed: "dir fehlen",
                 urgentNoTime: "Zeit reicht nicht",
@@ -756,7 +804,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Informations du script", scriptInfoName: "Nom :",
                 scriptInfoVersion: "Version :", scriptInfoDescription: "Description :",
-                scriptInfoDescriptionText: "Met en évidence, sur la page elle-même, les campagnes de drops qui correspondent à tes mots-clés : vert dans l'onglet campagnes, bleu dans à venir, rouge dans terminées. Le panneau les liste séparées en actives, à venir et terminées —les trois à la fois, parce qu'il les lit depuis l'API : les onglets de Kick rechargent la page, donc en lisant seulement ce que tu as devant toi on ne les verrait jamais ensemble—, avec la fenêtre de dates, le mot-clé qui a correspondu et chaque récompense avec les heures qu'elle demande. Un mot-clé correspond n'importe où dans le texte, donc « rage » trouve une campagne appelée « averageaden $5 Bonus » ; la carte dit quel mot-clé c'était, pour qu'aucune n'apparaisse sans expliquer pourquoi. Les récompenses que tu possèdes déjà sont cochées et barrées une par une, et un badge où il ne reste plus rien à gagner perd le temps de visionnage qu'il demandait. Ce que tu as déjà gagné mais pas récupéré est signalé à part avec 🎁 —sans être atténué— parce qu'il ne manque qu'un clic, et l'alerte de fermeture les compte aussi. Ce qui est sur le point de fermer passe en premier : quand une récompense que tu n'as pas encore n'a plus que 72 heures, sa carte dit combien de temps il reste et combien de visionnage il te manque —rouge en dessous de 24 heures— ou que ça ne rentre plus, et le même ⏳ se pose sur la carte de la campagne dans la page. Les campagnes à venir portent aussi leurs récompenses et le coût de chaque palier, mais jamais d'échéance : avant l'ouverture rien n'est urgent, et un compte à rebours la veille ne fait qu'inquiéter. Et une campagne terminée que tu as déjà entièrement réclamée n'est pas listée, parce que Kick la déplace vers les réclamés : le panneau ne montre pas des lignes que la page n'a pas. Les mots-clés sont modifiables : clique sur l'un pour l'effacer, + pour ajouter, édite-les en bloc ou restaure ceux par défaut. Un mot-clé qui commence par « - » exclut : « -console » écarte la campagne même si un autre mot-clé l'avait trouvée, et emporte avec lui la surbrillance, la carte et l'alerte. Et quatre filtres d'affichage réduisent la liste des ouvertes sans toucher à rien d'autre —ce qu'il te reste, ce qui ferme bientôt, ce que tu as gagné sans le récupérer, et ce qui se prend en une heure ou moins— : ils se cumulent, ils sont mémorisés, et l'onglet dit combien de cartes s'affichent sur combien il y en a. La liste des ouvertes se trie par ce qui ferme en premier ou par ce qui demande le moins de temps, à ton choix. Et chaque campagne ouverte porte, sur sa propre carte dans la page, le temps qu'il te faut pour tout emporter —sa récompense la plus chère, parce que le temps de visionnage se compte par campagne—, pour que le coût se voie en faisant défiler. Les campagnes ouvertes et à venir se copient comme texte avec le 🔗 : titre, dates et récompenses, avec un lien vers l'onglet où elles vivent —campagnes ou à venir— parce que chez Kick une campagne n'a pas d'adresse à elle. Si tes données de réclamé et de visionné n'arrivent jamais —sans elles impossible de savoir ce que tu as ni combien tu as regardé—, le panneau le dit au lieu de se taire avec ses marques éteintes. Partout où Kick dessine une barre de progression, le survol dit exactement combien de visionnage il te manque, et le clic ouvre le détail du drop. L'onglet des réclamés reçoit sa propre grille, qui dit en plus depuis combien de temps tu as obtenu chaque chose, et elle remplace la liste de Kick pour ne pas montrer deux fois la même chose. La case masque ce qui est terminé et active la réclamation automatique, aussi bien des drops finis que du coffre de récompense quotidienne que Kick donne pour regarder des streams (qui n'est pas un drop) : le coffre ne s'ouvre que quand la récompense est vraiment disponible, il est détecté sans dépendre de la langue, et il est toujours vérifié après les drops, jamais au milieu. Et elle réclame aussi dans l'onglet des terminées : ce qui s'arrête avec la campagne, c'est la progression, pas ce que tu as déjà gagné, donc une récompense débloquée avant la fermeture se récupère encore là. Et ce qu'elle masque comprend la récompense que tu as déjà réclamée, que Kick laisse sur la page comme une tuile nue : ce qui décide qu'elle est réclamée, ce sont tes données de réclamé, pas la forme de la page. Et le coffre apparaît aussi comme une tuile de plus dans la grille, avec la barre de progression de Kick : les minutes de visionnage qui lui manquent —le survol les dit, et un clic ouvre sa fenêtre sans rien réclamer—, qu'il sera réclamé tout seul à la fin, et —dès que c'est possible— un bouton qui le réclame et laisse le résultat de Kick ouvert. Et seulement celui d'aujourd'hui : une fois la fenêtre du jour fermée, la tuile disparaît jusqu'à l'arrivée du nouveau défi. Les campagnes qui ont changé depuis ta dernière visite sont marquées d'un 🔔 —dans le panneau et sur la carte elle-même—, avec un compteur d'attente, une notification de bureau et un bouton 👁️ qui les donne pour vues et t'emmène à l'onglet campagnes. 16 langues.",
+                scriptInfoDescriptionText: "Met en évidence, sur la page elle-même, les campagnes de drops qui correspondent à tes mots-clés : vert dans l'onglet campagnes, bleu dans à venir, rouge dans terminées. Le panneau les liste séparées en actives, à venir et terminées —les trois à la fois, parce qu'il les lit depuis l'API : les onglets de Kick rechargent la page, donc en lisant seulement ce que tu as devant toi on ne les verrait jamais ensemble—, avec la fenêtre de dates, le mot-clé qui a correspondu et chaque récompense avec les heures qu'elle demande. Un mot-clé correspond n'importe où dans le texte, donc « rage » trouve une campagne appelée « averageaden $5 Bonus » ; la carte dit quel mot-clé c'était, pour qu'aucune n'apparaisse sans expliquer pourquoi. Les récompenses que tu possèdes déjà sont cochées et barrées une par une, et un badge où il ne reste plus rien à gagner perd le temps de visionnage qu'il demandait. Ce que tu as déjà gagné mais pas récupéré est signalé à part avec 🎁 —sans être atténué— parce qu'il ne manque qu'un clic, et l'alerte de fermeture les compte aussi. Ce qui est sur le point de fermer passe en premier : quand une récompense que tu n'as pas encore n'a plus que 72 heures, sa carte dit combien de temps il reste et combien de visionnage il te manque —rouge en dessous de 24 heures— ou que ça ne rentre plus, et le même ⏳ se pose sur la carte de la campagne dans la page. Les campagnes à venir portent aussi leurs récompenses et le coût de chaque palier, mais jamais d'échéance : avant l'ouverture rien n'est urgent, et un compte à rebours la veille ne fait qu'inquiéter. Et une campagne terminée que tu as déjà entièrement réclamée n'est pas listée, parce que Kick la déplace vers les réclamés : le panneau ne montre pas des lignes que la page n'a pas. Les mots-clés sont modifiables : clique sur l'un pour l'effacer, + pour ajouter, édite-les en bloc ou restaure ceux par défaut. Un mot-clé qui commence par « - » exclut : « -console » écarte la campagne même si un autre mot-clé l'avait trouvée, et emporte avec lui la surbrillance, la carte et l'alerte. Et quatre filtres d'affichage réduisent la liste des ouvertes sans toucher à rien d'autre —ce qu'il te reste, ce qui ferme bientôt, ce que tu as gagné sans le récupérer, et ce qui se prend en une heure ou moins— : ils se cumulent, ils sont mémorisés, et l'onglet dit combien de cartes s'affichent sur combien il y en a. La liste des ouvertes se trie par ce qui ferme en premier ou par ce qui demande le moins de temps, à ton choix. Et chaque campagne ouverte porte, sur sa propre carte dans la page, le temps qu'il te faut pour tout emporter —sa récompense la plus chère, parce que le temps de visionnage se compte par campagne—, pour que le coût se voie en faisant défiler. Les campagnes ouvertes et à venir se copient comme texte avec le 🔗 : titre, dates et récompenses, avec un lien vers l'onglet où elles vivent —campagnes ou à venir— parce que chez Kick une campagne n'a pas d'adresse à elle. Si tes données de réclamé et de visionné n'arrivent jamais —sans elles impossible de savoir ce que tu as ni combien tu as regardé—, le panneau le dit au lieu de se taire avec ses marques éteintes. Partout où Kick dessine une barre de progression, le survol dit exactement combien de visionnage il te manque, et le clic ouvre le détail du drop. L'onglet des réclamés reçoit sa propre grille, qui dit en plus depuis combien de temps tu as obtenu chaque chose, et elle remplace la liste de Kick pour ne pas montrer deux fois la même chose. La case masque ce qui est terminé et active la réclamation automatique, aussi bien des drops finis que du coffre de récompense quotidienne que Kick donne pour regarder des streams (qui n'est pas un drop) : le coffre ne s'ouvre que quand la récompense est vraiment disponible, il est détecté sans dépendre de la langue, et il est toujours vérifié après les drops, jamais au milieu. Et elle réclame aussi dans l'onglet des terminées : ce qui s'arrête avec la campagne, c'est la progression, pas ce que tu as déjà gagné, donc une récompense débloquée avant la fermeture se récupère encore là. Et ce qu'elle masque comprend la récompense que tu as déjà réclamée, que Kick laisse sur la page comme une tuile nue : ce qui décide qu'elle est réclamée, ce sont tes données de réclamé, pas la forme de la page. Et le coffre apparaît aussi comme une tuile de plus dans la grille, avec la barre de progression de Kick : les minutes de visionnage qui lui manquent —le survol les dit, et un clic ouvre sa fenêtre sans rien réclamer—, qu'il sera réclamé tout seul à la fin, et —dès que c'est possible— un bouton qui le réclame et laisse le résultat de Kick ouvert. Et seulement celui d'aujourd'hui : une fois la fenêtre du jour fermée, la tuile disparaît jusqu'à l'arrivée du nouveau défi. Les campagnes qui ont changé depuis ta dernière visite sont marquées d'un 🔔 —dans le panneau et sur la carte elle-même—, avec un compteur d'attente, une notification de bureau et un bouton 👁️ qui les donne pour vues et t'emmène à l'onglet campagnes. Et la série quotidienne n'est plus une ligne de plus : le panneau dessine la jauge du coffre —jours enchaînés, minutes regardées, quand elle se réinitialise et si elle est assurée— et elle ne se referme pas tant que tu n'as pas sauvé ta série ; le 👁️ ne coupe que le son et le compteur, cela sonne une fois par jour et par fenêtre, et avec la case cochée le panneau reste sur cet onglet jusqu'à ce que la série soit assurée. 16 langues.",
                 scriptInfoAuthor: "Auteur :", scriptInfoGitHub: "GitHub :",
                 readingApiDrops: "Lecture des changements de drops depuis l'API...",
                 earnedUnclaimed: "gagné, non réclamé",
@@ -775,6 +823,12 @@
                 sortCheapestHint: "Trie par ce qui demande le moins pour obtenir quelque chose. Le ⏱ de la carte est un autre calcul : ce que coûte tout emporter.",
                 noInventoryData: "Sans inventaire : impossible de savoir ce que tu as ni combien tu as regardé.",
                 dailyStreakReminder: "Récompense quotidienne : {done} min sur {total} regardées. Ne perds pas ta série aujourd'hui.",
+                streakLabel: "Série",
+                streakResetsIn: "réinitialisée dans {t}",
+                streakSafe: "assurée aujourd'hui",
+                streakAtRisk: "en danger aujourd'hui",
+                streakRead: "Cliquez pour lire votre série : ouvre et referme le coffre de Kick, qui la fournit",
+                streakSilence: "Couper l'alerte. La jauge reste jusqu'à ce que tu sauves ta série, et elle resonnera demain si rien n'est fait",
                 urgentClosesIn: "se termine dans",
                 urgentNeed: "il te manque",
                 urgentNoTime: "pas assez de temps",
@@ -819,7 +873,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Informações do script", scriptInfoName: "Nome:",
                 scriptInfoVersion: "Versão:", scriptInfoDescription: "Descrição:",
-                scriptInfoDescriptionText: "Destaca na própria página as campanhas de drops que combinam com as tuas keywords: verde na aba de campanhas, azul na de em breve, vermelho na de encerradas. O painel lista-as separadas em ativas, próximas e encerradas —as três de uma vez, porque as lê da API: as abas do Kick recarregam a página, por isso lendo só o que está à tua frente nunca se veriam juntas—, com a janela de datas, a keyword que correspondeu e cada recompensa com as horas que pede. Uma keyword corresponde em qualquer parte do texto, por isso «rage» encontra uma campanha chamada «averageaden $5 Bonus»; o cartão diz qual keyword foi, para que nenhuma apareça sem explicar porquê. As recompensas que já tens ficam com ✓ e riscadas uma a uma, e um badge sem nada por ganhar perde o tempo que pedia. O que já ganhaste mas não recolheste fica à parte com 🎁 —sem esmaecer— porque só falta um clique, e o aviso de encerramento também os conta. O que está por fechar vai primeiro: quando a uma recompensa que ainda não tens acaba o tempo dentro de 72 horas, o seu cartão diz quanto falta e quanto tempo de visualização te falta —vermelho abaixo de 24 horas— ou que já não dá tempo, e o mesmo ⏳ cai no cartão da campanha na página. As próximas levam também as suas recompensas e o que custa cada nível, mas nunca um prazo: antes de abrir nada é urgente, e uma contagem decrescente no dia anterior só alarma. E uma campanha encerrada que já resgataste por completo não é listada, porque o Kick a move para os resgatados: o painel não mostra linhas que a página não tem. As keywords são editáveis: clica numa para apagá-la, + para adicionar, edita-as em bloco ou restaura as predefinidas. Uma keyword que comece por «-» exclui: «-console» deixa a campanha de fora mesmo que outra keyword a tivesse encontrado, e leva com ela o destaque, o cartão e o aviso. E quatro filtros de vista reduzem a lista das abertas sem tocar em mais nada —o que ainda te falta, o que fecha em breve, o que já ganhaste e não recolheste, e o que se tira numa hora ou menos—: somam-se entre si, são lembrados, e a aba diz quantos cartões se veem de quantos há. A lista das abertas ordena-se pelo que fecha primeiro ou pelo que pede menos tempo, à tua escolha. E cada campanha aberta leva, no seu próprio cartão na página, o tempo que te falta para levares tudo o que resta —a sua recompensa mais cara, porque o tempo de visualização é por campanha—, para que o custo se veja ao rolar. As campanhas abertas e as próximas copiam-se como texto com o 🔗: título, datas e recompensas, com a ligação para a aba onde vivem —abertas ou em breve— porque no Kick uma campanha não tem endereço próprio. Se os teus dados de resgatado e visto nunca chegarem —sem eles não se sabe o que tens nem quanto viste—, o painel di-lo em vez de ficar calado com as marcas apagadas. Onde quer que o Kick desenhe uma barra de progresso, passar o rato diz exatamente quanto tempo de visualização te falta, e clicar abre o detalhe do drop. A aba dos resgatados ganha uma grelha própria que diz ainda há quanto tempo conseguiste cada coisa, e substitui a lista do Kick para não mostrar o mesmo duas vezes. A caixa esconde o que está completo e ativa o resgate automático, tanto dos drops terminados como do baú de recompensa diária que o Kick dá por ver streams (que não é um drop): o baú só se abre quando a recompensa está mesmo disponível, deteta-se sem depender do idioma, e verifica-se sempre depois dos drops, nunca a meio. E também resgata no separador das encerradas: o que acaba com a campanha é o progresso, não o que já ganhaste, por isso uma recompensa que desbloqueaste antes do encerramento continua a recolher-se dali. E o que esconde inclui a recompensa que já resgataste, que o Kick deixa na página como um mosaico pelado: o que decide que está resgatada são os teus dados de resgatado, não a forma da página. E o baú aparece também como mais um bloco dessa grelha, com a barra de progresso da Kick: os minutos de visualização que ainda faltam —o rato por cima di-los, e um clique abre a sua janela sem resgatar nada—, que será resgatado sozinho ao chegar ao fim, e —assim que der— um botão que o resgata e deixa o resultado da Kick aberto. E só o de hoje: fechada a janela do dia, o bloco desaparece até chegar o desafio novo. Marca com 🔔 —no painel e no próprio cartão— as campanhas que mudaram desde a última vez, com uma contagem de pendentes, notificação no ambiente de trabalho e um botão 👁️ que as dá por vistas e te leva à aba de campanhas. 16 idiomas.",
+                scriptInfoDescriptionText: "Destaca na própria página as campanhas de drops que combinam com as tuas keywords: verde na aba de campanhas, azul na de em breve, vermelho na de encerradas. O painel lista-as separadas em ativas, próximas e encerradas —as três de uma vez, porque as lê da API: as abas do Kick recarregam a página, por isso lendo só o que está à tua frente nunca se veriam juntas—, com a janela de datas, a keyword que correspondeu e cada recompensa com as horas que pede. Uma keyword corresponde em qualquer parte do texto, por isso «rage» encontra uma campanha chamada «averageaden $5 Bonus»; o cartão diz qual keyword foi, para que nenhuma apareça sem explicar porquê. As recompensas que já tens ficam com ✓ e riscadas uma a uma, e um badge sem nada por ganhar perde o tempo que pedia. O que já ganhaste mas não recolheste fica à parte com 🎁 —sem esmaecer— porque só falta um clique, e o aviso de encerramento também os conta. O que está por fechar vai primeiro: quando a uma recompensa que ainda não tens acaba o tempo dentro de 72 horas, o seu cartão diz quanto falta e quanto tempo de visualização te falta —vermelho abaixo de 24 horas— ou que já não dá tempo, e o mesmo ⏳ cai no cartão da campanha na página. As próximas levam também as suas recompensas e o que custa cada nível, mas nunca um prazo: antes de abrir nada é urgente, e uma contagem decrescente no dia anterior só alarma. E uma campanha encerrada que já resgataste por completo não é listada, porque o Kick a move para os resgatados: o painel não mostra linhas que a página não tem. As keywords são editáveis: clica numa para apagá-la, + para adicionar, edita-as em bloco ou restaura as predefinidas. Uma keyword que comece por «-» exclui: «-console» deixa a campanha de fora mesmo que outra keyword a tivesse encontrado, e leva com ela o destaque, o cartão e o aviso. E quatro filtros de vista reduzem a lista das abertas sem tocar em mais nada —o que ainda te falta, o que fecha em breve, o que já ganhaste e não recolheste, e o que se tira numa hora ou menos—: somam-se entre si, são lembrados, e a aba diz quantos cartões se veem de quantos há. A lista das abertas ordena-se pelo que fecha primeiro ou pelo que pede menos tempo, à tua escolha. E cada campanha aberta leva, no seu próprio cartão na página, o tempo que te falta para levares tudo o que resta —a sua recompensa mais cara, porque o tempo de visualização é por campanha—, para que o custo se veja ao rolar. As campanhas abertas e as próximas copiam-se como texto com o 🔗: título, datas e recompensas, com a ligação para a aba onde vivem —abertas ou em breve— porque no Kick uma campanha não tem endereço próprio. Se os teus dados de resgatado e visto nunca chegarem —sem eles não se sabe o que tens nem quanto viste—, o painel di-lo em vez de ficar calado com as marcas apagadas. Onde quer que o Kick desenhe uma barra de progresso, passar o rato diz exatamente quanto tempo de visualização te falta, e clicar abre o detalhe do drop. A aba dos resgatados ganha uma grelha própria que diz ainda há quanto tempo conseguiste cada coisa, e substitui a lista do Kick para não mostrar o mesmo duas vezes. A caixa esconde o que está completo e ativa o resgate automático, tanto dos drops terminados como do baú de recompensa diária que o Kick dá por ver streams (que não é um drop): o baú só se abre quando a recompensa está mesmo disponível, deteta-se sem depender do idioma, e verifica-se sempre depois dos drops, nunca a meio. E também resgata no separador das encerradas: o que acaba com a campanha é o progresso, não o que já ganhaste, por isso uma recompensa que desbloqueaste antes do encerramento continua a recolher-se dali. E o que esconde inclui a recompensa que já resgataste, que o Kick deixa na página como um mosaico pelado: o que decide que está resgatada são os teus dados de resgatado, não a forma da página. E o baú aparece também como mais um bloco dessa grelha, com a barra de progresso da Kick: os minutos de visualização que ainda faltam —o rato por cima di-los, e um clique abre a sua janela sem resgatar nada—, que será resgatado sozinho ao chegar ao fim, e —assim que der— um botão que o resgata e deixa o resultado da Kick aberto. E só o de hoje: fechada a janela do dia, o bloco desaparece até chegar o desafio novo. Marca com 🔔 —no painel e no próprio cartão— as campanhas que mudaram desde a última vez, com uma contagem de pendentes, notificação no ambiente de trabalho e um botão 👁️ que as dá por vistas e te leva à aba de campanhas. E a sequência diária deixou de ser mais uma linha: o painel desenha o medidor do baú —dias encadeados, minutos vistos, quando reinicia e se está garantida— e não se descarta até a salvares; o 👁️ só cala o apito e a contagem, soa uma vez por dia e por janela, e com a caixa marcada o painel fica nesse separador até a sequência estar garantida. 16 idiomas.",
                 scriptInfoAuthor: "Autor:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "A ler alterações de drops da API...",
                 earnedUnclaimed: "ganho, falta resgatar",
@@ -838,6 +892,12 @@
                 sortCheapestHint: "Ordena pelo que menos pede para levar alguma coisa. O ⏱ do cartão é outra conta: o que custa levar tudo.",
                 noInventoryData: "Sem inventário: não se sabe o que tens nem quanto já viste.",
                 dailyStreakReminder: "Recompensa diária: {done} de {total} min assistidos. Não perca a sua sequência hoje.",
+                streakLabel: "Sequência",
+                streakResetsIn: "reinicia em {t}",
+                streakSafe: "garantida hoje",
+                streakAtRisk: "em risco hoje",
+                streakRead: "Clica para ler a tua sequência: abre e fecha o baú da Kick, que é quem a traz",
+                streakSilence: "Silenciar o aviso. O medidor fica até salvares a sequência e voltará a soar amanhã se continuar por fazer",
                 urgentClosesIn: "fecha em",
                 urgentNeed: "faltam",
                 urgentNoTime: "não dá tempo",
@@ -881,7 +941,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Информация о скрипте", scriptInfoName: "Имя:",
                 scriptInfoVersion: "Версия:", scriptInfoDescription: "Описание:",
-                scriptInfoDescriptionText: "Подсвечивает прямо на странице кампании дропов, которые совпали с твоими ключевыми словами: зелёным во вкладке кампаний, синим в предстоящих, красным в закрытых. Панель перечисляет их отдельно: открытые, предстоящие и закрытые —все три сразу, потому что читает их из API: вкладки Kick перезагружают страницу, так что, читая только то, что перед тобой, вместе их не увидеть—, с окном дат, ключевым словом, которое сработало, и каждой наградой с часами, которых она требует. Ключевое слово совпадает в любом месте текста, поэтому «rage» находит кампанию «averageaden $5 Bonus»; карточка говорит, какое это было слово, чтобы ни одна не появлялась без объяснения. Награды, которые у тебя уже есть, отмечаются галочкой и зачёркиваются по одной, а бейдж, в котором больше нечего получать, теряет своё время просмотра. То, что уже заработано, но не забрано, выделено отдельно значком 🎁 —без затемнения—, потому что не хватает лишь клика, и предупреждение о закрытии их тоже считает. То, что вот-вот закроется, идёт первым: когда у награды, которой у тебя ещё нет, остаётся меньше 72 часов, её карточка говорит, сколько времени осталось и сколько просмотра тебе не хватает —красным при менее чем 24 часах— или что уже не успеть, и тот же ⏳ появляется на карточке кампании на странице. Предстоящие кампании тоже несут свои награды и стоимость каждого уровня, но никогда срок: до открытия ничто не срочно, а обратный отсчёт за день до этого только пугает. И закрытая кампания, которую ты уже полностью забрал, не перечисляется, потому что Kick переносит её в забранные: панель не показывает строк, которых нет на странице. Ключевые слова редактируются: нажми на одно, чтобы удалить, + чтобы добавить, отредактируй их списком или верни значения по умолчанию. Ключевое слово, которое начинается с «-», исключает: «-console» убирает кампанию, даже если её нашло другое слово, и уносит с собой подсветку, карточку и уведомление. А четыре фильтра вида сокращают список открытых, не трогая ничего другого —что тебе ещё осталось, что скоро закроется, что заработано и не забрано, и что берётся за час или меньше—: они складываются, запоминаются, и вкладка говорит, сколько карточек показано из скольких есть. Список открытых сортируется по тому, что закроется раньше, или по тому, что требует меньше времени — как выберешь. И каждая открытая кампания несёт на своей карточке на странице время, которого тебе не хватает, чтобы забрать всё оставшееся —её самую дорогую награду, потому что время просмотра считается по кампании—, чтобы цена была видна при прокрутке. Открытые и предстоящие кампании копируются как текст по 🔗: название, даты и награды, со ссылкой на вкладку, где они живут —кампании или предстоящие—, потому что в Kick у кампании нет собственного адреса. Если твои данные о забранном и просмотренном так и не придут —без них не узнать, что у тебя есть и сколько ты посмотрел—, панель скажет об этом, вместо того чтобы молчать с погашенными отметками. Везде, где Kick рисует полосу прогресса, наведение мыши говорит, сколько именно просмотра тебе не хватает, а клик открывает подробности дропа. Вкладка забранного получает собственную сетку, которая вдобавок говорит, как давно ты получил каждую вещь, и заменяет список Kick, чтобы одно и то же не показывалось дважды. Галочка скрывает завершённое и включает автоматическое получение — и законченных дропов, и ежедневного сундука, который Kick даёт за просмотр стримов (и который не является дропом): сундук открывается, только когда награда действительно доступна, он определяется без опоры на язык, и проверяется всегда после дропов, никогда посреди них. И забирает также на вкладке закрытых: с кампанией заканчивается прогресс, а не то, что ты уже заработал, так что награда, открытая до закрытия, по-прежнему забирается оттуда. И среди завершённого, которое она скрывает, есть уже забранная награда, которую Kick оставляет на странице пустой плиткой: то, что она забрана, решают твои данные о забранном, а не форма страницы. И сундук появляется ещё и как плитка в этой сетке, с полосой прогресса Kick: сколько минут просмотра ему не хватает —наведение мыши это говорит, а клик открывает его окно, ничего не забирая—, что он заберётся сам по достижении цели, и —как только можно— кнопка, которая забирает его и оставляет результат Kick открытым. И только сегодняшний: когда окно дня закрывается, плитка исчезает до прихода нового задания. Отмечает значком 🔔 —в панели и на самой карточке— кампании, изменившиеся с прошлого раза, со счётчиком непросмотренных, уведомлением рабочего стола и кнопкой 👁️, которая помечает их как просмотренные и ведёт тебя во вкладку кампаний. 16 языков.",
+                scriptInfoDescriptionText: "Подсвечивает прямо на странице кампании дропов, которые совпали с твоими ключевыми словами: зелёным во вкладке кампаний, синим в предстоящих, красным в закрытых. Панель перечисляет их отдельно: открытые, предстоящие и закрытые —все три сразу, потому что читает их из API: вкладки Kick перезагружают страницу, так что, читая только то, что перед тобой, вместе их не увидеть—, с окном дат, ключевым словом, которое сработало, и каждой наградой с часами, которых она требует. Ключевое слово совпадает в любом месте текста, поэтому «rage» находит кампанию «averageaden $5 Bonus»; карточка говорит, какое это было слово, чтобы ни одна не появлялась без объяснения. Награды, которые у тебя уже есть, отмечаются галочкой и зачёркиваются по одной, а бейдж, в котором больше нечего получать, теряет своё время просмотра. То, что уже заработано, но не забрано, выделено отдельно значком 🎁 —без затемнения—, потому что не хватает лишь клика, и предупреждение о закрытии их тоже считает. То, что вот-вот закроется, идёт первым: когда у награды, которой у тебя ещё нет, остаётся меньше 72 часов, её карточка говорит, сколько времени осталось и сколько просмотра тебе не хватает —красным при менее чем 24 часах— или что уже не успеть, и тот же ⏳ появляется на карточке кампании на странице. Предстоящие кампании тоже несут свои награды и стоимость каждого уровня, но никогда срок: до открытия ничто не срочно, а обратный отсчёт за день до этого только пугает. И закрытая кампания, которую ты уже полностью забрал, не перечисляется, потому что Kick переносит её в забранные: панель не показывает строк, которых нет на странице. Ключевые слова редактируются: нажми на одно, чтобы удалить, + чтобы добавить, отредактируй их списком или верни значения по умолчанию. Ключевое слово, которое начинается с «-», исключает: «-console» убирает кампанию, даже если её нашло другое слово, и уносит с собой подсветку, карточку и уведомление. А четыре фильтра вида сокращают список открытых, не трогая ничего другого —что тебе ещё осталось, что скоро закроется, что заработано и не забрано, и что берётся за час или меньше—: они складываются, запоминаются, и вкладка говорит, сколько карточек показано из скольких есть. Список открытых сортируется по тому, что закроется раньше, или по тому, что требует меньше времени — как выберешь. И каждая открытая кампания несёт на своей карточке на странице время, которого тебе не хватает, чтобы забрать всё оставшееся —её самую дорогую награду, потому что время просмотра считается по кампании—, чтобы цена была видна при прокрутке. Открытые и предстоящие кампании копируются как текст по 🔗: название, даты и награды, со ссылкой на вкладку, где они живут —кампании или предстоящие—, потому что в Kick у кампании нет собственного адреса. Если твои данные о забранном и просмотренном так и не придут —без них не узнать, что у тебя есть и сколько ты посмотрел—, панель скажет об этом, вместо того чтобы молчать с погашенными отметками. Везде, где Kick рисует полосу прогресса, наведение мыши говорит, сколько именно просмотра тебе не хватает, а клик открывает подробности дропа. Вкладка забранного получает собственную сетку, которая вдобавок говорит, как давно ты получил каждую вещь, и заменяет список Kick, чтобы одно и то же не показывалось дважды. Галочка скрывает завершённое и включает автоматическое получение — и законченных дропов, и ежедневного сундука, который Kick даёт за просмотр стримов (и который не является дропом): сундук открывается, только когда награда действительно доступна, он определяется без опоры на язык, и проверяется всегда после дропов, никогда посреди них. И забирает также на вкладке закрытых: с кампанией заканчивается прогресс, а не то, что ты уже заработал, так что награда, открытая до закрытия, по-прежнему забирается оттуда. И среди завершённого, которое она скрывает, есть уже забранная награда, которую Kick оставляет на странице пустой плиткой: то, что она забрана, решают твои данные о забранном, а не форма страницы. И сундук появляется ещё и как плитка в этой сетке, с полосой прогресса Kick: сколько минут просмотра ему не хватает —наведение мыши это говорит, а клик открывает его окно, ничего не забирая—, что он заберётся сам по достижении цели, и —как только можно— кнопка, которая забирает его и оставляет результат Kick открытым. И только сегодняшний: когда окно дня закрывается, плитка исчезает до прихода нового задания. Отмечает значком 🔔 —в панели и на самой карточке— кампании, изменившиеся с прошлого раза, со счётчиком непросмотренных, уведомлением рабочего стола и кнопкой 👁️, которая помечает их как просмотренные и ведёт тебя во вкладку кампаний. А ежедневная серия больше не просто строка: панель рисует индикатор сундука —сколько дней подряд, сколько минут просмотрено, когда сброс и в безопасности ли она— и его нельзя убрать, пока серия не спасена; 👁️ отключает только звук и счётчик, сигнал звучит раз в день и раз за окно, а с установленной галочкой панель остаётся на этой вкладке, пока серия не будет спасена. 16 языков.",
                 scriptInfoAuthor: "Автор:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Читаем изменения дропов из API...",
                 earnedUnclaimed: "получено, не забрано",
@@ -900,6 +960,12 @@
                 sortCheapestHint: "Сортирует по тому, что требует меньше всего, чтобы получить хоть что-то. ⏱ на карточке — другой расчёт: сколько стоит забрать всё.",
                 noInventoryData: "Нет инвентаря: неизвестно, что получено и сколько просмотрено.",
                 dailyStreakReminder: "Ежедневная награда: просмотрено {done} из {total} мин. Не теряйте серию сегодня.",
+                streakLabel: "Серия",
+                streakResetsIn: "сбросится через {t}",
+                streakSafe: "сегодня в безопасности",
+                streakAtRisk: "сегодня под угрозой",
+                streakRead: "Нажмите, чтобы узнать серию: откроется и закроется сундук Kick, который её присылает",
+                streakSilence: "Отключить звук. Индикатор останется, пока вы не спасёте серию, и завтра напомнит снова, если дело не сделано",
                 urgentClosesIn: "закроется через",
                 urgentNeed: "осталось",
                 urgentNoTime: "не успеешь",
@@ -944,7 +1010,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Script Bilgisi", scriptInfoName: "Ad:",
                 scriptInfoVersion: "Sürüm:", scriptInfoDescription: "Açıklama:",
-                scriptInfoDescriptionText: "Anahtar kelimelerinle eşleşen drop kampanyalarını sayfanın kendisinde vurgular: kampanyalar sekmesinde yeşil, yaklaşanlarda mavi, kapananlarda kırmızı. Panel bunları açık, yaklaşan ve kapanmış olarak ayrı ayrı listeler —üçünü birden, çünkü onları API'den okur: Kick'in sekmeleri sayfayı yeniden yükler, dolayısıyla yalnızca önündekini okuyarak üçü bir arada asla görülmez—, tarih aralığı, eşleşen anahtar kelime ve her ödül ile istediği saatlerle birlikte. Bir anahtar kelime metnin herhangi bir yerinde eşleşir, bu yüzden «rage» «averageaden $5 Bonus» adlı bir kampanyayı bulur; kart hangi kelime olduğunu söyler, böylece hiçbiri nedenini açıklamadan ortaya çıkmaz. Zaten sahip olduğun ödüller tek tek işaretlenip üstü çizilir ve kazanılacak bir şeyi kalmayan rozet, istediği izleme süresini bırakır. Kazandığın ama henüz almadığın şey 🎁 ile ayrı işaretlenir —soluklaştırılmadan—, çünkü yalnızca bir tık kalmıştır, ve kapanış uyarısı onları da sayar. Kapanmak üzere olan öne geçer: henüz sahip olmadığın bir ödülün süresi 72 saatin içine girdiğinde, kartı ne kadar kaldığını ve daha ne kadar izlemen gerektiğini söyler —24 saatin altında kırmızı— ya da artık yetişmeyeceğini, ve aynı ⏳ sayfadaki kampanya kartına da düşer. Yaklaşan kampanyalar da ödüllerini ve her kademenin maliyetini taşır, ama asla bir süre sınırı taşımaz: açılmadan önce hiçbir şey acele değildir ve bir gün önceki geri sayım yalnızca telaş yaratır. Ve tamamını aldığın kapanmış bir kampanya listelenmez, çünkü Kick onu alınanlara taşır: panel, sayfada olmayan satırları göstermez. Anahtar kelimeler düzenlenebilir: silmek için birine tıkla, eklemek için +, topluca düzenle ya da varsayılanlara döndür. «-» ile başlayan bir anahtar kelime dışlar: «-console», başka bir kelime bulmuş olsa bile kampanyayı eler ve vurguyu, kartı ve uyarıyı da beraberinde götürür. Ve dört görünüm filtresi açıkların listesini başka hiçbir şeye dokunmadan kısaltır —hâlâ eksiğin olan, yakında kapanan, kazanıp almadığın ve bir saat veya daha kısa sürede alınan—: birbirine eklenir, hatırlanır, ve sekme kaç karttan kaçının göründüğünü söyler. Açıkların listesi önce kapanana ya da en az zaman isteyene göre sıralanır, senin seçimin. Ve her açık kampanya, sayfadaki kendi kartında, kalan her şeyi almak için sana gereken süreyi taşır —en pahalı ödülünü, çünkü izleme süresi kampanya başınadır—, böylece maliyet kaydırırken görünür. Açık ve yaklaşan kampanyalar 🔗 ile metin olarak kopyalanabilir: başlık, tarihler ve ödüller, yaşadıkları sekmeye bir bağlantıyla —kampanyalar ya da yaklaşanlar— çünkü Kick'te bir kampanyanın kendine ait adresi yoktur. Alınan ve izlenen verilerin hiç gelmezse —onlarsız neye sahip olduğun ve ne kadar izlediğin bilinemez— panel bunu söyler, işaretleri sönük bırakıp susmak yerine. Kick'in ilerleme çubuğu çizdiği her yerde, üzerine gelmek tam olarak ne kadar izleme süresi kaldığını söyler ve tıklamak drop ayrıntısını açar. Alınanlar sekmesi kendi ızgarasını kazanır; bu ızgara ayrıca her şeyi ne kadar zaman önce aldığını söyler ve aynı şey iki kez görünmesin diye Kick'in listesinin yerine geçer. Onay kutusu tamamlananları gizler ve otomatik almayı açar: hem biten drop'ları hem de Kick'in yayın izlediğin için verdiği günlük ödül sandığını (ki bu bir drop değildir): sandık yalnızca ödül gerçekten kullanılabilir olduğunda açılır, dile bağlı olmadan algılanır ve her zaman drop'lardan sonra denetlenir, asla aralarında. Ve kapanmış sekmesinde de alır: kampanyayla biten ilerlemedir, zaten kazandığın şey değil, bu yüzden kapanmadan önce açtığın bir ödül oradan alınmaya devam eder. Ve gizlediği tamamlananlar arasında zaten aldığın ödül de var; Kick onu sayfada çıplak bir karo olarak bırakır: alındığına karar veren şey senin alınan verilerindir, sayfanın biçimi değil. Ve sandık bu ızgarada bir kutu olarak da çıkar, Kick'in ilerleme çubuğuyla: kaç izleme dakikası kaldığını —fare üzerine gelince söyler, tıklamak ise hiçbir şey almadan penceresini açar—, süre dolunca kendiliğinden alınacağını ve —alınabildiği anda— onu alıp Kick'in sonucunu açık bırakan bir düğmeyi gösterir. Ve yalnızca bugünküyü: günün penceresi kapandığında kutu, yeni görev gelene kadar kaybolur. Son baktığından beri değişen kampanyaları 🔔 ile işaretler —panelde ve kartın kendisinde—, bekleyen sayısı, masaüstü bildirimi ve onları görüldü sayıp seni kampanyalar sekmesine götüren bir 👁️ düğmesiyle. 16 dil.",
+                scriptInfoDescriptionText: "Anahtar kelimelerinle eşleşen drop kampanyalarını sayfanın kendisinde vurgular: kampanyalar sekmesinde yeşil, yaklaşanlarda mavi, kapananlarda kırmızı. Panel bunları açık, yaklaşan ve kapanmış olarak ayrı ayrı listeler —üçünü birden, çünkü onları API'den okur: Kick'in sekmeleri sayfayı yeniden yükler, dolayısıyla yalnızca önündekini okuyarak üçü bir arada asla görülmez—, tarih aralığı, eşleşen anahtar kelime ve her ödül ile istediği saatlerle birlikte. Bir anahtar kelime metnin herhangi bir yerinde eşleşir, bu yüzden «rage» «averageaden $5 Bonus» adlı bir kampanyayı bulur; kart hangi kelime olduğunu söyler, böylece hiçbiri nedenini açıklamadan ortaya çıkmaz. Zaten sahip olduğun ödüller tek tek işaretlenip üstü çizilir ve kazanılacak bir şeyi kalmayan rozet, istediği izleme süresini bırakır. Kazandığın ama henüz almadığın şey 🎁 ile ayrı işaretlenir —soluklaştırılmadan—, çünkü yalnızca bir tık kalmıştır, ve kapanış uyarısı onları da sayar. Kapanmak üzere olan öne geçer: henüz sahip olmadığın bir ödülün süresi 72 saatin içine girdiğinde, kartı ne kadar kaldığını ve daha ne kadar izlemen gerektiğini söyler —24 saatin altında kırmızı— ya da artık yetişmeyeceğini, ve aynı ⏳ sayfadaki kampanya kartına da düşer. Yaklaşan kampanyalar da ödüllerini ve her kademenin maliyetini taşır, ama asla bir süre sınırı taşımaz: açılmadan önce hiçbir şey acele değildir ve bir gün önceki geri sayım yalnızca telaş yaratır. Ve tamamını aldığın kapanmış bir kampanya listelenmez, çünkü Kick onu alınanlara taşır: panel, sayfada olmayan satırları göstermez. Anahtar kelimeler düzenlenebilir: silmek için birine tıkla, eklemek için +, topluca düzenle ya da varsayılanlara döndür. «-» ile başlayan bir anahtar kelime dışlar: «-console», başka bir kelime bulmuş olsa bile kampanyayı eler ve vurguyu, kartı ve uyarıyı da beraberinde götürür. Ve dört görünüm filtresi açıkların listesini başka hiçbir şeye dokunmadan kısaltır —hâlâ eksiğin olan, yakında kapanan, kazanıp almadığın ve bir saat veya daha kısa sürede alınan—: birbirine eklenir, hatırlanır, ve sekme kaç karttan kaçının göründüğünü söyler. Açıkların listesi önce kapanana ya da en az zaman isteyene göre sıralanır, senin seçimin. Ve her açık kampanya, sayfadaki kendi kartında, kalan her şeyi almak için sana gereken süreyi taşır —en pahalı ödülünü, çünkü izleme süresi kampanya başınadır—, böylece maliyet kaydırırken görünür. Açık ve yaklaşan kampanyalar 🔗 ile metin olarak kopyalanabilir: başlık, tarihler ve ödüller, yaşadıkları sekmeye bir bağlantıyla —kampanyalar ya da yaklaşanlar— çünkü Kick'te bir kampanyanın kendine ait adresi yoktur. Alınan ve izlenen verilerin hiç gelmezse —onlarsız neye sahip olduğun ve ne kadar izlediğin bilinemez— panel bunu söyler, işaretleri sönük bırakıp susmak yerine. Kick'in ilerleme çubuğu çizdiği her yerde, üzerine gelmek tam olarak ne kadar izleme süresi kaldığını söyler ve tıklamak drop ayrıntısını açar. Alınanlar sekmesi kendi ızgarasını kazanır; bu ızgara ayrıca her şeyi ne kadar zaman önce aldığını söyler ve aynı şey iki kez görünmesin diye Kick'in listesinin yerine geçer. Onay kutusu tamamlananları gizler ve otomatik almayı açar: hem biten drop'ları hem de Kick'in yayın izlediğin için verdiği günlük ödül sandığını (ki bu bir drop değildir): sandık yalnızca ödül gerçekten kullanılabilir olduğunda açılır, dile bağlı olmadan algılanır ve her zaman drop'lardan sonra denetlenir, asla aralarında. Ve kapanmış sekmesinde de alır: kampanyayla biten ilerlemedir, zaten kazandığın şey değil, bu yüzden kapanmadan önce açtığın bir ödül oradan alınmaya devam eder. Ve gizlediği tamamlananlar arasında zaten aldığın ödül de var; Kick onu sayfada çıplak bir karo olarak bırakır: alındığına karar veren şey senin alınan verilerindir, sayfanın biçimi değil. Ve sandık bu ızgarada bir kutu olarak da çıkar, Kick'in ilerleme çubuğuyla: kaç izleme dakikası kaldığını —fare üzerine gelince söyler, tıklamak ise hiçbir şey almadan penceresini açar—, süre dolunca kendiliğinden alınacağını ve —alınabildiği anda— onu alıp Kick'in sonucunu açık bırakan bir düğmeyi gösterir. Ve yalnızca bugünküyü: günün penceresi kapandığında kutu, yeni görev gelene kadar kaybolur. Son baktığından beri değişen kampanyaları 🔔 ile işaretler —panelde ve kartın kendisinde—, bekleyen sayısı, masaüstü bildirimi ve onları görüldü sayıp seni kampanyalar sekmesine götüren bir 👁️ düğmesiyle. Ve günlük seri artık bir satır değil: panel sandığın göstergesini çizer —zincirlenen günler, izlenen dakikalar, ne zaman sıfırlanacağı ve güvende olup olmadığı— ve seriyi kurtarana kadar kapatılamaz; 👁️ yalnızca sesi ve sayacı susturur, günde bir ve pencere başına bir kez çalar, kutu işaretliyken panel seri güvende olana kadar o sekmede kalır. 16 dil.",
                 scriptInfoAuthor: "Yazar:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Drop değişiklikleri API’den okunuyor...",
                 earnedUnclaimed: "kazanıldı, alınmadı",
@@ -963,6 +1029,12 @@
                 sortCheapestHint: "Bir şey almak için en az isteyene göre sıralar. Karttaki ⏱ başka bir hesap: her şeyi almanın maliyeti.",
                 noInventoryData: "Envanter yok: neye sahip olduğun ve ne kadar izlediğin bilinmiyor.",
                 dailyStreakReminder: "Günlük ödül: {total} dakikanın {done} dakikası izlendi. Bugün serini kaybetme.",
+                streakLabel: "Seri",
+                streakResetsIn: "{t} sonra sıfırlanır",
+                streakSafe: "bugün güvende",
+                streakAtRisk: "bugün risk altında",
+                streakRead: "Serini okumak için tıkla: onu getiren Kick sandığını açıp kapatır",
+                streakSilence: "Uyarıyı sustur. Göstergeyi seriyi kurtarana kadar kalır ve yapılmadıysa yarın yine çalar",
                 urgentClosesIn: "kapanışa",
                 urgentNeed: "kalan",
                 urgentNoTime: "zaman yetmiyor",
@@ -1007,7 +1079,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "スクリプト情報", scriptInfoName: "名前:",
                 scriptInfoVersion: "バージョン:", scriptInfoDescription: "説明:",
-                scriptInfoDescriptionText: "キーワードに一致するドロップキャンペーンをページ上で直接ハイライトします。キャンペーンのタブでは緑、近日公開では青、終了済みでは赤です。パネルは進行中・近日公開・終了済みに分けて一覧にします —三つを同時に。APIから読むからです。Kickのタブはページを再読み込みするので、目の前にあるものだけを読んでいては三つが揃うことはありません—。期間、一致したキーワード、そして各報酬と必要な時間も表示します。キーワードは文中のどこでも一致するので、「rage」は「averageaden $5 Bonus」というキャンペーンを見つけます。どのキーワードだったかはカードが示すので、理由の分からないまま出てくるものはありません。すでに持っている報酬は一つずつチェックが付いて取り消し線が引かれ、獲得するものが残っていないバッジからは必要時間の表示が消えます。獲得済みでまだ受け取っていないものは 🎁 を付けて別扱いにし、薄くはしません。あと一クリックで済むからです。終了間近の警告にも数えられます。閉じそうなものが先に来ます。まだ持っていない報酬の残り時間が72時間を切ると、そのカードは残り時間とあと何時間の視聴が必要かを示し —24時間未満は赤—、間に合わない場合はそう伝えます。同じ ⏳ がページ上のキャンペーンのカードにも付きます。近日公開のキャンペーンも、その報酬と各段階に必要な時間を表示しますが、期限は表示しません。始まる前に急ぐものは何もなく、前日のカウントダウンは不安をあおるだけです。そして、すでにすべて受け取った終了済みのキャンペーンは一覧に出ません。Kickがそれを受け取り済みに移すからです。ページにない行をパネルが見せることはありません。キーワードは編集できます。クリックで削除、+ で追加、まとめて編集、既定値に戻すこともできます。「-」で始まるキーワードは除外します。「-console」は他のキーワードが見つけていたとしてもそのキャンペーンを外し、ハイライトもカードも通知も一緒に消します。さらに四つの表示フィルターが、ほかに何も触れずに進行中の一覧だけを絞り込みます —まだ残っているもの、まもなく終了するもの、獲得済みで未受け取りのもの、一時間以内で取れるもの—。条件は重ねて効き、記憶され、タブには何件中何件が表示されているかが出ます。進行中の一覧は、先に終わる順か、必要時間が少ない順かを選べます。そして進行中の各キャンペーンは、ページ上の自分のカードに、残りをすべて取るのに必要な時間を表示します —その中で最も高い報酬の時間です。視聴時間はキャンペーン単位で数えられるためです—。スクロールしながら必要な時間が見えるようにするためです。進行中と近日公開のキャンペーンは 🔗 でテキストとしてコピーできます。タイトル、日付、報酬、そしてそれが置かれているタブへのリンク付きです —キャンペーンか近日公開か—。Kickではキャンペーンに固有のアドレスがないからです。受け取り済みと視聴時間のデータが届かない場合 —それがなければ何を持っていてどれだけ見たか分かりません— パネルはマークを消したまま黙るのではなく、そのことを伝えます。Kickが進捗バーを描く場所では、マウスを重ねるとあと何分の視聴が必要かが正確に分かり、クリックするとドロップの詳細が開きます。受け取り済みのタブには独自のグリッドが表示され、それぞれをいつ入手したかも分かります。同じものを二度見せないよう、Kickの一覧を置き換えます。チェックボックスは完了したものを隠し、自動受け取りを有効にします。終了したドロップだけでなく、Kickが配信の視聴に対して与える毎日の報酬の宝箱（これはドロップではありません）も対象です。宝箱は報酬が実際に利用できるときだけ開かれ、言語に依存せずに検出され、常にドロップのあとに確認されます。途中では決して行いません。そして終了したタブでも受け取ります。キャンペーンとともに終わるのは進捗であって、すでに獲得したものではありません。閉じる前に解除した報酬は、そこから受け取れます。隠される「完了したもの」には、すでに受け取った報酬も含まれます。Kick はそれをページ上に画像と名前だけのタイルとして残しますが、受け取り済みかどうかを決めるのはあなたの受け取りデータで、ページの形ではありません。さらにこの宝箱も一覧のタイルとして並びます: Kick の進捗バー付きで、残りの視聴分数—マウスを重ねると分かり、クリックすると何も受け取らずにその画面が開きます—、終わったら自動で受け取ること、そして受け取れるようになったら —Kick の結果を開いたまま残す— 受け取りボタンを表示します。出すのは今日の分だけで、その日の期限が過ぎるとタイルは消え、新しい挑戦が届くまで出ません。前回見たときから変わったキャンペーンには 🔔 を付け —パネルにもカード自体にも—、未確認の件数、デスクトップ通知、そして既読にしてキャンペーンのタブへ移動する 👁️ ボタンも用意しています。16言語対応。",
+                scriptInfoDescriptionText: "キーワードに一致するドロップキャンペーンをページ上で直接ハイライトします。キャンペーンのタブでは緑、近日公開では青、終了済みでは赤です。パネルは進行中・近日公開・終了済みに分けて一覧にします —三つを同時に。APIから読むからです。Kickのタブはページを再読み込みするので、目の前にあるものだけを読んでいては三つが揃うことはありません—。期間、一致したキーワード、そして各報酬と必要な時間も表示します。キーワードは文中のどこでも一致するので、「rage」は「averageaden $5 Bonus」というキャンペーンを見つけます。どのキーワードだったかはカードが示すので、理由の分からないまま出てくるものはありません。すでに持っている報酬は一つずつチェックが付いて取り消し線が引かれ、獲得するものが残っていないバッジからは必要時間の表示が消えます。獲得済みでまだ受け取っていないものは 🎁 を付けて別扱いにし、薄くはしません。あと一クリックで済むからです。終了間近の警告にも数えられます。閉じそうなものが先に来ます。まだ持っていない報酬の残り時間が72時間を切ると、そのカードは残り時間とあと何時間の視聴が必要かを示し —24時間未満は赤—、間に合わない場合はそう伝えます。同じ ⏳ がページ上のキャンペーンのカードにも付きます。近日公開のキャンペーンも、その報酬と各段階に必要な時間を表示しますが、期限は表示しません。始まる前に急ぐものは何もなく、前日のカウントダウンは不安をあおるだけです。そして、すでにすべて受け取った終了済みのキャンペーンは一覧に出ません。Kickがそれを受け取り済みに移すからです。ページにない行をパネルが見せることはありません。キーワードは編集できます。クリックで削除、+ で追加、まとめて編集、既定値に戻すこともできます。「-」で始まるキーワードは除外します。「-console」は他のキーワードが見つけていたとしてもそのキャンペーンを外し、ハイライトもカードも通知も一緒に消します。さらに四つの表示フィルターが、ほかに何も触れずに進行中の一覧だけを絞り込みます —まだ残っているもの、まもなく終了するもの、獲得済みで未受け取りのもの、一時間以内で取れるもの—。条件は重ねて効き、記憶され、タブには何件中何件が表示されているかが出ます。進行中の一覧は、先に終わる順か、必要時間が少ない順かを選べます。そして進行中の各キャンペーンは、ページ上の自分のカードに、残りをすべて取るのに必要な時間を表示します —その中で最も高い報酬の時間です。視聴時間はキャンペーン単位で数えられるためです—。スクロールしながら必要な時間が見えるようにするためです。進行中と近日公開のキャンペーンは 🔗 でテキストとしてコピーできます。タイトル、日付、報酬、そしてそれが置かれているタブへのリンク付きです —キャンペーンか近日公開か—。Kickではキャンペーンに固有のアドレスがないからです。受け取り済みと視聴時間のデータが届かない場合 —それがなければ何を持っていてどれだけ見たか分かりません— パネルはマークを消したまま黙るのではなく、そのことを伝えます。Kickが進捗バーを描く場所では、マウスを重ねるとあと何分の視聴が必要かが正確に分かり、クリックするとドロップの詳細が開きます。受け取り済みのタブには独自のグリッドが表示され、それぞれをいつ入手したかも分かります。同じものを二度見せないよう、Kickの一覧を置き換えます。チェックボックスは完了したものを隠し、自動受け取りを有効にします。終了したドロップだけでなく、Kickが配信の視聴に対して与える毎日の報酬の宝箱（これはドロップではありません）も対象です。宝箱は報酬が実際に利用できるときだけ開かれ、言語に依存せずに検出され、常にドロップのあとに確認されます。途中では決して行いません。そして終了したタブでも受け取ります。キャンペーンとともに終わるのは進捗であって、すでに獲得したものではありません。閉じる前に解除した報酬は、そこから受け取れます。隠される「完了したもの」には、すでに受け取った報酬も含まれます。Kick はそれをページ上に画像と名前だけのタイルとして残しますが、受け取り済みかどうかを決めるのはあなたの受け取りデータで、ページの形ではありません。さらにこの宝箱も一覧のタイルとして並びます: Kick の進捗バー付きで、残りの視聴分数—マウスを重ねると分かり、クリックすると何も受け取らずにその画面が開きます—、終わったら自動で受け取ること、そして受け取れるようになったら —Kick の結果を開いたまま残す— 受け取りボタンを表示します。出すのは今日の分だけで、その日の期限が過ぎるとタイルは消え、新しい挑戦が届くまで出ません。前回見たときから変わったキャンペーンには 🔔 を付け —パネルにもカード自体にも—、未確認の件数、デスクトップ通知、そして既読にしてキャンペーンのタブへ移動する 👁️ ボタンも用意しています。そして毎日の連続記録はもう一行ではありません。パネルが宝箱のメーターを描き —連続日数、視聴した分数、リセットの時刻、そして安全かどうか— 連続記録を守るまで閉じられません。👁️ は音とカウントだけを消し、1日および1ウィンドウにつき1回鳴り、チェックを入れていればパネルは連続記録が安全になるまでそのタブに留まります。 16言語対応。",
                 scriptInfoAuthor: "作者:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "API からドロップの変更を読み込み中...",
                 earnedUnclaimed: "獲得済み、未受け取り",
@@ -1026,6 +1098,12 @@
                 sortCheapestHint: "何か一つ手に入れるのに一番時間がかからない順に並べます。カードの⏱は別の数字で、すべて手に入れるのにかかる時間です。",
                 noInventoryData: "インベントリなし: 所持状況と視聴時間が不明です。",
                 dailyStreakReminder: "デイリー報酬: {total} 分のうち {done} 分視聴。今日の連続記録を切らさないように。",
+                streakLabel: "連続記録",
+                streakResetsIn: "{t} でリセット",
+                streakSafe: "今日は安全",
+                streakAtRisk: "今日は危険",
+                streakRead: "クリックで連続記録を読み込み: それを持つ Kick の宝箱を開いて閉じます",
+                streakSilence: "通知を消音します。メーターは連続記録を守るまで残り、未達成なら明日また鳴ります",
                 urgentClosesIn: "終了まで",
                 urgentNeed: "残り",
                 urgentNoTime: "時間が足りません",
@@ -1070,7 +1148,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "스크립트 정보", scriptInfoName: "이름:",
                 scriptInfoVersion: "버전:", scriptInfoDescription: "설명:",
-                scriptInfoDescriptionText: "키워드와 일치하는 드롭 캠페인을 페이지에서 바로 강조합니다. 캠페인 탭에서는 초록색, 예정 탭에서는 파란색, 종료 탭에서는 빨간색입니다. 패널은 진행 중, 예정, 종료로 나누어 보여줍니다 —세 가지를 한꺼번에. API에서 읽어오기 때문입니다. Kick의 탭은 페이지를 새로 불러오므로 눈앞에 있는 것만 읽어서는 세 가지를 함께 볼 수 없습니다—. 기간, 일치한 키워드, 그리고 각 보상과 필요한 시간도 함께 표시합니다. 키워드는 텍스트의 어느 위치에서든 일치하므로 「rage」는 「averageaden $5 Bonus」라는 캠페인을 찾아냅니다. 어떤 키워드였는지는 카드가 알려주므로 이유 없이 나타나는 항목은 없습니다. 이미 보유한 보상은 하나씩 체크되고 취소선이 그어지며, 더 얻을 것이 없는 배지에서는 요구 시간 표시가 사라집니다. 이미 획득했지만 수령하지 않은 것은 🎁 로 따로 표시하고 흐리게 하지 않습니다. 클릭 한 번만 남았기 때문이며, 종료 경고도 이를 함께 셉니다. 곧 닫히는 것이 먼저 옵니다. 아직 없는 보상의 남은 시간이 72시간 이내로 들어오면, 그 카드는 얼마나 남았는지와 시청 시간이 얼마나 더 필요한지 알려주고 —24시간 미만이면 빨간색— 시간이 부족하면 그렇다고 말합니다. 같은 ⏳ 가 페이지의 캠페인 카드에도 붙습니다. 예정된 캠페인도 보상과 각 단계에 필요한 시간을 함께 보여주지만 기한은 보여주지 않습니다. 시작하기 전에는 급할 것이 없고, 하루 전 카운트다운은 불안만 줍니다. 그리고 이미 전부 수령한 종료된 캠페인은 목록에 나오지 않습니다. Kick이 그것을 수령함으로 옮기기 때문이며, 패널은 페이지에 없는 항목을 보여주지 않습니다. 키워드는 편집할 수 있습니다. 클릭하면 삭제, + 로 추가, 한꺼번에 편집하거나 기본값으로 되돌릴 수 있습니다. 「-」로 시작하는 키워드는 제외합니다. 「-console」은 다른 키워드가 찾았더라도 그 캠페인을 빼고, 강조와 카드와 알림까지 함께 없앱니다. 그리고 네 개의 보기 필터가 다른 것은 건드리지 않고 진행 중 목록만 추립니다 —아직 남은 것, 곧 끝나는 것, 획득했지만 수령하지 않은 것, 한 시간 이하로 얻을 수 있는 것—. 조건은 겹쳐서 적용되고 기억되며, 탭에는 전체 중 몇 개가 보이는지 나옵니다. 진행 중 목록은 먼저 끝나는 순서나 시간이 가장 적게 드는 순서로 정렬할 수 있습니다. 그리고 진행 중인 각 캠페인은 페이지의 자기 카드에 남은 것을 모두 가져가는 데 필요한 시간을 표시합니다 —가장 비싼 보상 기준입니다. 시청 시간은 캠페인 단위로 세기 때문입니다—. 스크롤하면서 비용이 보이도록 하기 위해서입니다. 진행 중과 예정 캠페인은 🔗 로 텍스트로 복사할 수 있습니다. 제목, 날짜, 보상, 그리고 그것이 있는 탭 —캠페인 또는 예정— 으로의 링크가 함께 들어갑니다. Kick에서는 캠페인에 고유 주소가 없기 때문입니다. 수령 및 시청 데이터가 끝내 도착하지 않으면 —그것이 없으면 무엇을 가졌는지, 얼마나 봤는지 알 수 없습니다— 패널은 표시를 끈 채 침묵하는 대신 그 사실을 알려줍니다. Kick이 진행률 막대를 그리는 곳이면 어디든 마우스를 올리면 시청 시간이 정확히 얼마나 남았는지 알려주고, 클릭하면 드롭 상세가 열립니다. 수령 탭에는 자체 그리드가 생기며, 각각을 언제 얻었는지도 알려주고, 같은 것을 두 번 보여주지 않도록 Kick의 목록을 대체합니다. 체크박스는 완료된 것을 숨기고 자동 수령을 켭니다. 끝난 드롭뿐 아니라 Kick이 스트림 시청에 대해 주는 매일 보상 상자(이것은 드롭이 아닙니다)도 대상입니다. 상자는 보상이 실제로 이용 가능할 때만 열리고, 언어에 의존하지 않고 감지되며, 항상 드롭 다음에 확인되고 그 중간에는 하지 않습니다. 그리고 종료된 탭에서도 수령합니다. 캠페인과 함께 끝나는 것은 진행도이지 이미 획득한 것이 아니므로, 종료 전에 해제한 보상은 거기에서 계속 받을 수 있습니다. 숨기는 완료된 항목에는 이미 수령한 보상도 포함됩니다. Kick은 그것을 페이지에 이미지와 이름만 남은 타일로 남겨두지만, 수령 여부를 결정하는 것은 당신의 수령 데이터이며 페이지의 형태가 아닙니다. 그리고 이 상자도 그 격자의 타일로 함께 나옵니다: Kick의 진행 막대와 함께, 남은 시청 분수—마우스를 올리면 알려주고, 클릭하면 아무것도 수령하지 않은 채 그 창이 열립니다—, 다 되면 알아서 수령한다는 안내, 그리고 수령할 수 있게 되면 —Kick의 결과 창을 그대로 열어 두는— 수령 버튼을 보여줍니다. 그리고 오늘 것만: 하루 창이 닫히면 타일은 새 도전이 올 때까지 사라집니다. 지난번 이후 바뀐 캠페인은 🔔 로 표시하고 —패널과 카드 자체 모두— 대기 중인 개수, 데스크톱 알림, 그리고 확인 처리하고 캠페인 탭으로 이동시키는 👁️ 버튼도 제공합니다. 16개 언어 지원.",
+                scriptInfoDescriptionText: "키워드와 일치하는 드롭 캠페인을 페이지에서 바로 강조합니다. 캠페인 탭에서는 초록색, 예정 탭에서는 파란색, 종료 탭에서는 빨간색입니다. 패널은 진행 중, 예정, 종료로 나누어 보여줍니다 —세 가지를 한꺼번에. API에서 읽어오기 때문입니다. Kick의 탭은 페이지를 새로 불러오므로 눈앞에 있는 것만 읽어서는 세 가지를 함께 볼 수 없습니다—. 기간, 일치한 키워드, 그리고 각 보상과 필요한 시간도 함께 표시합니다. 키워드는 텍스트의 어느 위치에서든 일치하므로 「rage」는 「averageaden $5 Bonus」라는 캠페인을 찾아냅니다. 어떤 키워드였는지는 카드가 알려주므로 이유 없이 나타나는 항목은 없습니다. 이미 보유한 보상은 하나씩 체크되고 취소선이 그어지며, 더 얻을 것이 없는 배지에서는 요구 시간 표시가 사라집니다. 이미 획득했지만 수령하지 않은 것은 🎁 로 따로 표시하고 흐리게 하지 않습니다. 클릭 한 번만 남았기 때문이며, 종료 경고도 이를 함께 셉니다. 곧 닫히는 것이 먼저 옵니다. 아직 없는 보상의 남은 시간이 72시간 이내로 들어오면, 그 카드는 얼마나 남았는지와 시청 시간이 얼마나 더 필요한지 알려주고 —24시간 미만이면 빨간색— 시간이 부족하면 그렇다고 말합니다. 같은 ⏳ 가 페이지의 캠페인 카드에도 붙습니다. 예정된 캠페인도 보상과 각 단계에 필요한 시간을 함께 보여주지만 기한은 보여주지 않습니다. 시작하기 전에는 급할 것이 없고, 하루 전 카운트다운은 불안만 줍니다. 그리고 이미 전부 수령한 종료된 캠페인은 목록에 나오지 않습니다. Kick이 그것을 수령함으로 옮기기 때문이며, 패널은 페이지에 없는 항목을 보여주지 않습니다. 키워드는 편집할 수 있습니다. 클릭하면 삭제, + 로 추가, 한꺼번에 편집하거나 기본값으로 되돌릴 수 있습니다. 「-」로 시작하는 키워드는 제외합니다. 「-console」은 다른 키워드가 찾았더라도 그 캠페인을 빼고, 강조와 카드와 알림까지 함께 없앱니다. 그리고 네 개의 보기 필터가 다른 것은 건드리지 않고 진행 중 목록만 추립니다 —아직 남은 것, 곧 끝나는 것, 획득했지만 수령하지 않은 것, 한 시간 이하로 얻을 수 있는 것—. 조건은 겹쳐서 적용되고 기억되며, 탭에는 전체 중 몇 개가 보이는지 나옵니다. 진행 중 목록은 먼저 끝나는 순서나 시간이 가장 적게 드는 순서로 정렬할 수 있습니다. 그리고 진행 중인 각 캠페인은 페이지의 자기 카드에 남은 것을 모두 가져가는 데 필요한 시간을 표시합니다 —가장 비싼 보상 기준입니다. 시청 시간은 캠페인 단위로 세기 때문입니다—. 스크롤하면서 비용이 보이도록 하기 위해서입니다. 진행 중과 예정 캠페인은 🔗 로 텍스트로 복사할 수 있습니다. 제목, 날짜, 보상, 그리고 그것이 있는 탭 —캠페인 또는 예정— 으로의 링크가 함께 들어갑니다. Kick에서는 캠페인에 고유 주소가 없기 때문입니다. 수령 및 시청 데이터가 끝내 도착하지 않으면 —그것이 없으면 무엇을 가졌는지, 얼마나 봤는지 알 수 없습니다— 패널은 표시를 끈 채 침묵하는 대신 그 사실을 알려줍니다. Kick이 진행률 막대를 그리는 곳이면 어디든 마우스를 올리면 시청 시간이 정확히 얼마나 남았는지 알려주고, 클릭하면 드롭 상세가 열립니다. 수령 탭에는 자체 그리드가 생기며, 각각을 언제 얻었는지도 알려주고, 같은 것을 두 번 보여주지 않도록 Kick의 목록을 대체합니다. 체크박스는 완료된 것을 숨기고 자동 수령을 켭니다. 끝난 드롭뿐 아니라 Kick이 스트림 시청에 대해 주는 매일 보상 상자(이것은 드롭이 아닙니다)도 대상입니다. 상자는 보상이 실제로 이용 가능할 때만 열리고, 언어에 의존하지 않고 감지되며, 항상 드롭 다음에 확인되고 그 중간에는 하지 않습니다. 그리고 종료된 탭에서도 수령합니다. 캠페인과 함께 끝나는 것은 진행도이지 이미 획득한 것이 아니므로, 종료 전에 해제한 보상은 거기에서 계속 받을 수 있습니다. 숨기는 완료된 항목에는 이미 수령한 보상도 포함됩니다. Kick은 그것을 페이지에 이미지와 이름만 남은 타일로 남겨두지만, 수령 여부를 결정하는 것은 당신의 수령 데이터이며 페이지의 형태가 아닙니다. 그리고 이 상자도 그 격자의 타일로 함께 나옵니다: Kick의 진행 막대와 함께, 남은 시청 분수—마우스를 올리면 알려주고, 클릭하면 아무것도 수령하지 않은 채 그 창이 열립니다—, 다 되면 알아서 수령한다는 안내, 그리고 수령할 수 있게 되면 —Kick의 결과 창을 그대로 열어 두는— 수령 버튼을 보여줍니다. 그리고 오늘 것만: 하루 창이 닫히면 타일은 새 도전이 올 때까지 사라집니다. 지난번 이후 바뀐 캠페인은 🔔 로 표시하고 —패널과 카드 자체 모두— 대기 중인 개수, 데스크톱 알림, 그리고 확인 처리하고 캠페인 탭으로 이동시키는 👁️ 버튼도 제공합니다. 그리고 일일 연속 기록은 더 이상 한 줄이 아닙니다. 패널이 상자의 미터를 그리고 —연속 일수, 시청한 분, 초기화 시각, 안전 여부— 연속 기록을 지킬 때까지 닫히지 않습니다. 👁️는 소리와 카운트만 끄고, 하루에 한 번·창마다 한 번 울리며, 체크박스를 켜 두면 패널은 연속 기록이 안전해질 때까지 그 탭에 머뭅니다. 16개 언어 지원.",
                 scriptInfoAuthor: "작성자:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "API에서 드롭 변경 사항을 읽는 중...",
                 earnedUnclaimed: "획득함, 미수령",
@@ -1089,6 +1167,12 @@
                 sortCheapestHint: "무언가 하나를 얻는 데 가장 적게 드는 순서로 정렬합니다. 카드의 ⏱는 다른 계산으로, 전부 받는 데 드는 시간입니다.",
                 noInventoryData: "인벤토리 없음: 보유 여부와 시청 시간을 알 수 없습니다.",
                 dailyStreakReminder: "일일 보상: {total}분 중 {done}분 시청. 오늘 연속 기록을 놓치지 마세요.",
+                streakLabel: "연속 기록",
+                streakResetsIn: "{t} 후 초기화",
+                streakSafe: "오늘은 안전",
+                streakAtRisk: "오늘은 위험",
+                streakRead: "클릭하면 연속 기록을 읽습니다: 그것을 가져오는 Kick 상자를 열었다 닫습니다",
+                streakSilence: "알림을 음소거합니다. 미터는 연속 기록을 지킬 때까지 남고, 그대로면 내일 다시 울립니다",
                 urgentClosesIn: "종료까지",
                 urgentNeed: "남은 시간",
                 urgentNoTime: "시간이 부족",
@@ -1133,7 +1217,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Informacje o skrypcie", scriptInfoName: "Nazwa:",
                 scriptInfoVersion: "Wersja:", scriptInfoDescription: "Opis:",
-                scriptInfoDescriptionText: "Podświetla na samej stronie kampanie dropów pasujące do twoich słów kluczowych: zielono w zakładce kampanii, niebiesko w nadchodzących, czerwono w zakończonych. Panel wypisuje je w podziale na otwarte, nadchodzące i zakończone —wszystkie trzy naraz, bo czyta je z API: zakładki Kicka przeładowują stronę, więc czytając tylko to, co masz przed sobą, nigdy nie zobaczyłbyś ich razem—, wraz z zakresem dat, słowem kluczowym, które trafiło, i każdą nagrodą z godzinami, których wymaga. Słowo kluczowe pasuje w dowolnym miejscu tekstu, więc „rage“ znajduje kampanię o nazwie „averageaden $5 Bonus“; karta mówi, które to było słowo, żeby żadna nie pojawiała się bez wyjaśnienia. Nagrody, które już masz, są odhaczane i przekreślane pojedynczo, a odznaka, w której nie ma już nic do zdobycia, traci swój czas oglądania. To, co już zdobyłeś, ale nie odebrałeś, jest oznaczone osobno przez 🎁 —bez przygaszania—, bo brakuje tylko kliknięcia, a ostrzeżenie o zamknięciu też je liczy. Najpierw idzie to, co zaraz się kończy: gdy nagrodzie, której jeszcze nie masz, zostaje mniej niż 72 godziny, jej karta mówi, ile zostało i ile oglądania ci brakuje —czerwono poniżej 24 godzin— albo że już się nie zmieści, a to samo ⏳ ląduje na karcie kampanii na stronie. Nadchodzące kampanie niosą także swoje nagrody i to, ile kosztuje każdy próg, ale nigdy terminu: przed startem nic nie jest pilne, a odliczanie dzień wcześniej tylko niepokoi. A zakończona kampania, którą już w całości odebrałeś, nie jest wypisywana, bo Kick przenosi ją do odebranych: panel nie pokazuje wierszy, których nie ma na stronie. Słowa kluczowe można edytować: kliknij, żeby usunąć, + żeby dodać, edytuj je hurtem albo przywróć domyślne. Słowo zaczynające się od „-“ wyklucza: „-console“ wyrzuca kampanię, nawet jeśli znalazło ją inne słowo, i zabiera ze sobą podświetlenie, kartę i powiadomienie. A cztery filtry widoku skracają listę otwartych, nie ruszając niczego innego —co ci jeszcze zostało, co niedługo się kończy, co zdobyłeś i nie odebrałeś, oraz co da się wziąć w godzinę lub krócej—: sumują się, są zapamiętywane, a zakładka mówi, ile kart widać z ilu jest. Lista otwartych sortuje się według tego, co kończy się pierwsze, albo według tego, co wymaga najmniej czasu — jak wolisz. I każda otwarta kampania niesie na swojej karcie na stronie czas, którego ci brakuje, żeby zabrać wszystko, co zostało —swoją najdroższą nagrodę, bo czas oglądania liczy się per kampania—, żeby koszt było widać podczas przewijania. Kampanie otwarte i nadchodzące kopiuje się jako tekst przez 🔗: tytuł, daty i nagrody, z linkiem do zakładki, w której żyją —kampanie albo nadchodzące— bo w Kicku kampania nie ma własnego adresu. Jeśli twoje dane o odebranym i obejrzanym nigdy nie dotrą —bez nich nie wiadomo, co masz ani ile obejrzałeś— panel to powie, zamiast milczeć z wygaszonymi oznaczeniami. Wszędzie tam, gdzie Kick rysuje pasek postępu, najechanie myszą mówi dokładnie, ile oglądania ci brakuje, a kliknięcie otwiera szczegóły dropa. Zakładka odebranych dostaje własną siatkę, która mówi dodatkowo, jak dawno zdobyłeś każdą rzecz, i zastępuje listę Kicka, żeby to samo nie było pokazywane dwa razy. Pole wyboru ukrywa to, co ukończone, i włącza automatyczne odbieranie — zarówno skończonych dropów, jak i codziennej skrzyni, którą Kick daje za oglądanie streamów (a która dropem nie jest): skrzynia otwiera się tylko wtedy, gdy nagroda naprawdę jest dostępna, wykrywa się ją bez oglądania na język, i sprawdza się ją zawsze po dropach, nigdy w ich trakcie. I odbiera także w zakładce zakończonych: wraz z kampanią kończy się postęp, a nie to, co już zdobyłeś, więc nagrodę odblokowaną przed zamknięciem nadal odbiera się stamtąd. A to, co ukrywa, obejmuje też nagrodę, którą już odebrałeś i którą Kick zostawia na stronie jako pusty kafelek: o tym, że jest odebrana, decydują twoje dane o odebranym, a nie kształt strony. A skrzynia pojawia się też jako kolejny kafelek tej siatki, z paskiem postępu Kicka: ile minut obejrzenia jej brakuje —najechanie myszą to mówi, a kliknięcie otwiera jej okno, niczego nie odbierając—, że odbierze się sama na końcu i —gdy już można— przycisk, który ją odbiera i zostawia wynik Kicka otwarty. I tylko dzisiejsza: po zamknięciu okna dnia kafelek znika, aż przyjdzie nowe zadanie. Kampanie, które zmieniły się od ostatniego razu, oznacza przez 🔔 —w panelu i na samej karcie— wraz z licznikiem oczekujących, powiadomieniem systemowym i przyciskiem 👁️, który uznaje je za obejrzane i przenosi cię do zakładki kampanii. 16 języków.",
+                scriptInfoDescriptionText: "Podświetla na samej stronie kampanie dropów pasujące do twoich słów kluczowych: zielono w zakładce kampanii, niebiesko w nadchodzących, czerwono w zakończonych. Panel wypisuje je w podziale na otwarte, nadchodzące i zakończone —wszystkie trzy naraz, bo czyta je z API: zakładki Kicka przeładowują stronę, więc czytając tylko to, co masz przed sobą, nigdy nie zobaczyłbyś ich razem—, wraz z zakresem dat, słowem kluczowym, które trafiło, i każdą nagrodą z godzinami, których wymaga. Słowo kluczowe pasuje w dowolnym miejscu tekstu, więc „rage“ znajduje kampanię o nazwie „averageaden $5 Bonus“; karta mówi, które to było słowo, żeby żadna nie pojawiała się bez wyjaśnienia. Nagrody, które już masz, są odhaczane i przekreślane pojedynczo, a odznaka, w której nie ma już nic do zdobycia, traci swój czas oglądania. To, co już zdobyłeś, ale nie odebrałeś, jest oznaczone osobno przez 🎁 —bez przygaszania—, bo brakuje tylko kliknięcia, a ostrzeżenie o zamknięciu też je liczy. Najpierw idzie to, co zaraz się kończy: gdy nagrodzie, której jeszcze nie masz, zostaje mniej niż 72 godziny, jej karta mówi, ile zostało i ile oglądania ci brakuje —czerwono poniżej 24 godzin— albo że już się nie zmieści, a to samo ⏳ ląduje na karcie kampanii na stronie. Nadchodzące kampanie niosą także swoje nagrody i to, ile kosztuje każdy próg, ale nigdy terminu: przed startem nic nie jest pilne, a odliczanie dzień wcześniej tylko niepokoi. A zakończona kampania, którą już w całości odebrałeś, nie jest wypisywana, bo Kick przenosi ją do odebranych: panel nie pokazuje wierszy, których nie ma na stronie. Słowa kluczowe można edytować: kliknij, żeby usunąć, + żeby dodać, edytuj je hurtem albo przywróć domyślne. Słowo zaczynające się od „-“ wyklucza: „-console“ wyrzuca kampanię, nawet jeśli znalazło ją inne słowo, i zabiera ze sobą podświetlenie, kartę i powiadomienie. A cztery filtry widoku skracają listę otwartych, nie ruszając niczego innego —co ci jeszcze zostało, co niedługo się kończy, co zdobyłeś i nie odebrałeś, oraz co da się wziąć w godzinę lub krócej—: sumują się, są zapamiętywane, a zakładka mówi, ile kart widać z ilu jest. Lista otwartych sortuje się według tego, co kończy się pierwsze, albo według tego, co wymaga najmniej czasu — jak wolisz. I każda otwarta kampania niesie na swojej karcie na stronie czas, którego ci brakuje, żeby zabrać wszystko, co zostało —swoją najdroższą nagrodę, bo czas oglądania liczy się per kampania—, żeby koszt było widać podczas przewijania. Kampanie otwarte i nadchodzące kopiuje się jako tekst przez 🔗: tytuł, daty i nagrody, z linkiem do zakładki, w której żyją —kampanie albo nadchodzące— bo w Kicku kampania nie ma własnego adresu. Jeśli twoje dane o odebranym i obejrzanym nigdy nie dotrą —bez nich nie wiadomo, co masz ani ile obejrzałeś— panel to powie, zamiast milczeć z wygaszonymi oznaczeniami. Wszędzie tam, gdzie Kick rysuje pasek postępu, najechanie myszą mówi dokładnie, ile oglądania ci brakuje, a kliknięcie otwiera szczegóły dropa. Zakładka odebranych dostaje własną siatkę, która mówi dodatkowo, jak dawno zdobyłeś każdą rzecz, i zastępuje listę Kicka, żeby to samo nie było pokazywane dwa razy. Pole wyboru ukrywa to, co ukończone, i włącza automatyczne odbieranie — zarówno skończonych dropów, jak i codziennej skrzyni, którą Kick daje za oglądanie streamów (a która dropem nie jest): skrzynia otwiera się tylko wtedy, gdy nagroda naprawdę jest dostępna, wykrywa się ją bez oglądania na język, i sprawdza się ją zawsze po dropach, nigdy w ich trakcie. I odbiera także w zakładce zakończonych: wraz z kampanią kończy się postęp, a nie to, co już zdobyłeś, więc nagrodę odblokowaną przed zamknięciem nadal odbiera się stamtąd. A to, co ukrywa, obejmuje też nagrodę, którą już odebrałeś i którą Kick zostawia na stronie jako pusty kafelek: o tym, że jest odebrana, decydują twoje dane o odebranym, a nie kształt strony. A skrzynia pojawia się też jako kolejny kafelek tej siatki, z paskiem postępu Kicka: ile minut obejrzenia jej brakuje —najechanie myszą to mówi, a kliknięcie otwiera jej okno, niczego nie odbierając—, że odbierze się sama na końcu i —gdy już można— przycisk, który ją odbiera i zostawia wynik Kicka otwarty. I tylko dzisiejsza: po zamknięciu okna dnia kafelek znika, aż przyjdzie nowe zadanie. Kampanie, które zmieniły się od ostatniego razu, oznacza przez 🔔 —w panelu i na samej karcie— wraz z licznikiem oczekujących, powiadomieniem systemowym i przyciskiem 👁️, który uznaje je za obejrzane i przenosi cię do zakładki kampanii. A dzienna seria nie jest już kolejnym wierszem: panel rysuje wskaźnik skrzyni —połączone dni, obejrzane minuty, kiedy się resetuje i czy jest bezpieczna— i nie da się go odrzucić, dopóki serii nie uratujesz; 👁️ wycisza tylko sygnał i licznik, odzywa się raz dziennie i raz na okno, a przy zaznaczonym polu panel zostaje na tej karcie, aż seria będzie bezpieczna. 16 języków.",
                 scriptInfoAuthor: "Autor:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Czytanie zmian dropów z API...",
                 earnedUnclaimed: "zdobyte, nieodebrane",
@@ -1152,6 +1236,12 @@
                 sortCheapestHint: "Sortuje według tego, co wymaga najmniej, by cokolwiek zdobyć. ⏱ na karcie to inne wyliczenie: ile kosztuje zabranie wszystkiego.",
                 noInventoryData: "Brak ekwipunku: nie wiadomo, co masz ani ile obejrzano.",
                 dailyStreakReminder: "Nagroda dzienna: obejrzano {done} z {total} min. Nie strać dziś swojej serii.",
+                streakLabel: "Seria",
+                streakResetsIn: "resetuje się za {t}",
+                streakSafe: "dziś bezpieczna",
+                streakAtRisk: "dziś zagrożona",
+                streakRead: "Kliknij, aby odczytać serię: otworzy i zamknie skrzynię Kicka, która ją przynosi",
+                streakSilence: "Wycisz alert. Wskaźnik zostaje, dopóki nie uratujesz serii, i odezwie się jutro, jeśli nadal będzie niezrobiona",
                 urgentClosesIn: "kończy się za",
                 urgentNeed: "brakuje",
                 urgentNoTime: "za mało czasu",
@@ -1196,7 +1286,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Skriptin tiedot", scriptInfoName: "Nimi:",
                 scriptInfoVersion: "Versio:", scriptInfoDescription: "Kuvaus:",
-                scriptInfoDescriptionText: "Korostaa avainsanoihisi osuvat drop-kampanjat itse sivulla: vihreä kampanjat-välilehdellä, sininen tulevissa, punainen päättyneissä. Paneeli listaa ne jaettuna avoimiin, tuleviin ja päättyneisiin —kaikki kolme kerralla, koska se lukee ne API:sta: Kickin välilehdet lataavat sivun uudelleen, joten pelkkää edessä olevaa lukemalla niitä ei näkisi koskaan yhdessä—, päivämääräikkunan, osuneen avainsanan ja jokaisen palkinnon vaatimine tunteineen. Avainsana osuu missä tahansa kohtaa tekstiä, joten ”rage” löytää kampanjan nimeltä ”averageaden $5 Bonus”; kortti kertoo, mikä avainsana se oli, jottei yksikään ilmesty selittämättä miksi. Palkinnot, jotka sinulla jo on, merkitään ja yliviivataan yksi kerrallaan, ja merkiltä, jossa ei ole enää mitään ansaittavaa, katoaa sen vaatima katseluaika. Se, minkä olet jo ansainnut mutta et lunastanut, merkitään erikseen 🎁-kuvakkeella —ei himmennettynä—, koska siitä puuttuu vain klikkaus, ja päättymisvaroitus laskee nekin mukaan. Pian päättyvä nousee ensimmäiseksi: kun palkinnolta, jota sinulla ei vielä ole, loppuu aika 72 tunnin sisällä, sen kortti kertoo, paljonko on jäljellä ja paljonko katseluaikaa sinulta puuttuu —punaisella alle 24 tunnin— tai ettei se enää mahdu, ja sama ⏳ ilmestyy kampanjan omaan korttiin sivulla. Tulevat kampanjat kantavat myös palkintonsa ja sen, mitä kukin taso vaatii, mutta eivät koskaan määräaikaa: ennen alkua mikään ei ole kiireellistä, ja lähtölaskenta päivää aiemmin vain hätäännyttää. Ja päättynyttä kampanjaa, jonka olet jo kokonaan lunastanut, ei listata, koska Kick siirtää sen lunastettuihin: paneeli ei näytä rivejä, joita sivulla ei ole. Avainsanoja voi muokata: klikkaa poistaaksesi, + lisätäksesi, muokkaa ne kerralla tai palauta oletukset. Avainsana, joka alkaa merkillä ”-”, sulkee pois: ”-console” pudottaa kampanjan, vaikka jokin toinen avainsana olisi sen löytänyt, ja vie mukanaan korostuksen, kortin ja ilmoituksen. Ja neljä näkymäsuodatinta karsivat avointen listaa koskematta mihinkään muuhun —mitä sinulta on vielä jäljellä, mikä päättyy pian, minkä olet ansainnut mutta et lunastanut, ja mikä irtoaa tunnissa tai vähemmässä—: ne vaikuttavat yhdessä, ne muistetaan, ja välilehti kertoo, kuinka monta korttia näkyy kuinka monesta. Avointen lista järjestetään sen mukaan, mikä päättyy ensin, tai sen mukaan, mikä vaatii vähiten aikaa — sinun valintasi. Ja jokainen avoin kampanja kantaa omassa kortissaan sivulla ajan, joka sinulta puuttuu kaiken jäljellä olevan viemiseen —kalleimman palkintonsa, koska katseluaika lasketaan kampanjaa kohti—, jotta hinta näkyy selatessa. Avoimet ja tulevat kampanjat voi kopioida tekstinä 🔗-painikkeella: otsikko, päivämäärät ja palkinnot, sekä linkki siihen välilehteen, jossa ne elävät —kampanjat tai tulevat— koska Kickissä kampanjalla ei ole omaa osoitetta. Jos tietosi lunastetusta ja katsotusta eivät koskaan saavu —ilman niitä ei tiedetä, mitä omistat tai kuinka paljon olet katsonut— paneeli sanoo sen sen sijaan, että vaikenisi merkinnät sammutettuina. Kaikkialla, missä Kick piirtää edistymispalkin, hiiren vieminen sen päälle kertoo tarkalleen, kuinka paljon katseluaikaa puuttuu, ja klikkaus avaa dropin tiedot. Lunastettujen välilehti saa oman ruudukkonsa, joka kertoo lisäksi, kuinka kauan sitten sait kunkin, ja se korvaa Kickin listan, jottei samaa näytetä kahdesti. Valintaruutu piilottaa valmiit ja kytkee päälle automaattisen lunastuksen — sekä valmiiden dropien että päivittäisen palkintoarkun, jonka Kick antaa striimien katsomisesta (eikä se ole drop): arkku avataan vain, kun palkinto on todella saatavilla, se tunnistetaan kieleen nojaamatta, ja se tarkistetaan aina dropien jälkeen, ei koskaan kesken. Ja se lunastaa myös päättyneiden välilehdellä: kampanjan mukana päättyy edistyminen, ei se, minkä olet jo ansainnut, joten ennen sulkeutumista avaamasi palkinto lunastetaan yhä sieltä. Ja se, mitä se piilottaa, sisältää myös jo lunastetun palkinnon, jonka Kick jättää sivulle paljaaksi ruuduksi: sen, että se on lunastettu, ratkaisevat sinun lunastustietosi, ei sivun muoto. Ja arkku näkyy myös yhtenä ruudukon ruutuna, Kickin edistymispalkin kanssa: kuinka monta katseluminuuttia siitä puuttuu —hiiri sen päällä kertoo sen, ja klikkaus avaa sen ikkunan lunastamatta mitään—, että se lunastetaan itsestään lopussa, ja —heti kun se on mahdollista— painike, joka lunastaa sen ja jättää Kickin tuloksen auki. Ja vain tämän päivän: kun päivän ikkuna sulkeutuu, ruutu katoaa, kunnes uusi haaste saapuu. Merkitsee 🔔-kuvakkeella —paneelissa ja itse kortissa— kampanjat, jotka ovat muuttuneet viime kerrasta, sekä kertoo odottavien määrän, lähettää työpöytäilmoituksen ja tarjoaa 👁️-painikkeen, joka merkitsee ne nähdyiksi ja vie sinut kampanjat-välilehdelle. 16 kieltä.",
+                scriptInfoDescriptionText: "Korostaa avainsanoihisi osuvat drop-kampanjat itse sivulla: vihreä kampanjat-välilehdellä, sininen tulevissa, punainen päättyneissä. Paneeli listaa ne jaettuna avoimiin, tuleviin ja päättyneisiin —kaikki kolme kerralla, koska se lukee ne API:sta: Kickin välilehdet lataavat sivun uudelleen, joten pelkkää edessä olevaa lukemalla niitä ei näkisi koskaan yhdessä—, päivämääräikkunan, osuneen avainsanan ja jokaisen palkinnon vaatimine tunteineen. Avainsana osuu missä tahansa kohtaa tekstiä, joten ”rage” löytää kampanjan nimeltä ”averageaden $5 Bonus”; kortti kertoo, mikä avainsana se oli, jottei yksikään ilmesty selittämättä miksi. Palkinnot, jotka sinulla jo on, merkitään ja yliviivataan yksi kerrallaan, ja merkiltä, jossa ei ole enää mitään ansaittavaa, katoaa sen vaatima katseluaika. Se, minkä olet jo ansainnut mutta et lunastanut, merkitään erikseen 🎁-kuvakkeella —ei himmennettynä—, koska siitä puuttuu vain klikkaus, ja päättymisvaroitus laskee nekin mukaan. Pian päättyvä nousee ensimmäiseksi: kun palkinnolta, jota sinulla ei vielä ole, loppuu aika 72 tunnin sisällä, sen kortti kertoo, paljonko on jäljellä ja paljonko katseluaikaa sinulta puuttuu —punaisella alle 24 tunnin— tai ettei se enää mahdu, ja sama ⏳ ilmestyy kampanjan omaan korttiin sivulla. Tulevat kampanjat kantavat myös palkintonsa ja sen, mitä kukin taso vaatii, mutta eivät koskaan määräaikaa: ennen alkua mikään ei ole kiireellistä, ja lähtölaskenta päivää aiemmin vain hätäännyttää. Ja päättynyttä kampanjaa, jonka olet jo kokonaan lunastanut, ei listata, koska Kick siirtää sen lunastettuihin: paneeli ei näytä rivejä, joita sivulla ei ole. Avainsanoja voi muokata: klikkaa poistaaksesi, + lisätäksesi, muokkaa ne kerralla tai palauta oletukset. Avainsana, joka alkaa merkillä ”-”, sulkee pois: ”-console” pudottaa kampanjan, vaikka jokin toinen avainsana olisi sen löytänyt, ja vie mukanaan korostuksen, kortin ja ilmoituksen. Ja neljä näkymäsuodatinta karsivat avointen listaa koskematta mihinkään muuhun —mitä sinulta on vielä jäljellä, mikä päättyy pian, minkä olet ansainnut mutta et lunastanut, ja mikä irtoaa tunnissa tai vähemmässä—: ne vaikuttavat yhdessä, ne muistetaan, ja välilehti kertoo, kuinka monta korttia näkyy kuinka monesta. Avointen lista järjestetään sen mukaan, mikä päättyy ensin, tai sen mukaan, mikä vaatii vähiten aikaa — sinun valintasi. Ja jokainen avoin kampanja kantaa omassa kortissaan sivulla ajan, joka sinulta puuttuu kaiken jäljellä olevan viemiseen —kalleimman palkintonsa, koska katseluaika lasketaan kampanjaa kohti—, jotta hinta näkyy selatessa. Avoimet ja tulevat kampanjat voi kopioida tekstinä 🔗-painikkeella: otsikko, päivämäärät ja palkinnot, sekä linkki siihen välilehteen, jossa ne elävät —kampanjat tai tulevat— koska Kickissä kampanjalla ei ole omaa osoitetta. Jos tietosi lunastetusta ja katsotusta eivät koskaan saavu —ilman niitä ei tiedetä, mitä omistat tai kuinka paljon olet katsonut— paneeli sanoo sen sen sijaan, että vaikenisi merkinnät sammutettuina. Kaikkialla, missä Kick piirtää edistymispalkin, hiiren vieminen sen päälle kertoo tarkalleen, kuinka paljon katseluaikaa puuttuu, ja klikkaus avaa dropin tiedot. Lunastettujen välilehti saa oman ruudukkonsa, joka kertoo lisäksi, kuinka kauan sitten sait kunkin, ja se korvaa Kickin listan, jottei samaa näytetä kahdesti. Valintaruutu piilottaa valmiit ja kytkee päälle automaattisen lunastuksen — sekä valmiiden dropien että päivittäisen palkintoarkun, jonka Kick antaa striimien katsomisesta (eikä se ole drop): arkku avataan vain, kun palkinto on todella saatavilla, se tunnistetaan kieleen nojaamatta, ja se tarkistetaan aina dropien jälkeen, ei koskaan kesken. Ja se lunastaa myös päättyneiden välilehdellä: kampanjan mukana päättyy edistyminen, ei se, minkä olet jo ansainnut, joten ennen sulkeutumista avaamasi palkinto lunastetaan yhä sieltä. Ja se, mitä se piilottaa, sisältää myös jo lunastetun palkinnon, jonka Kick jättää sivulle paljaaksi ruuduksi: sen, että se on lunastettu, ratkaisevat sinun lunastustietosi, ei sivun muoto. Ja arkku näkyy myös yhtenä ruudukon ruutuna, Kickin edistymispalkin kanssa: kuinka monta katseluminuuttia siitä puuttuu —hiiri sen päällä kertoo sen, ja klikkaus avaa sen ikkunan lunastamatta mitään—, että se lunastetaan itsestään lopussa, ja —heti kun se on mahdollista— painike, joka lunastaa sen ja jättää Kickin tuloksen auki. Ja vain tämän päivän: kun päivän ikkuna sulkeutuu, ruutu katoaa, kunnes uusi haaste saapuu. Merkitsee 🔔-kuvakkeella —paneelissa ja itse kortissa— kampanjat, jotka ovat muuttuneet viime kerrasta, sekä kertoo odottavien määrän, lähettää työpöytäilmoituksen ja tarjoaa 👁️-painikkeen, joka merkitsee ne nähdyiksi ja vie sinut kampanjat-välilehdelle. Ja päivittäinen putki ei ole enää yksi rivi lisää: paneeli piirtää arkun mittarin —ketjutetut päivät, katsotut minuutit, milloin se nollautuu ja onko se turvassa— eikä sitä voi sulkea ennen kuin pelastat putken; 👁️ vaimentaa vain äänen ja laskurin, se soi kerran päivässä ja kerran ikkunaa kohti, ja ruutu rastitettuna paneeli jää siihen välilehteen kunnes putki on turvassa. 16 kieltä.",
                 scriptInfoAuthor: "Tekijä:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Luetaan dropien muutoksia API:sta...",
                 earnedUnclaimed: "ansaittu, lunastamatta",
@@ -1215,6 +1305,12 @@
                 sortCheapestHint: "Järjestää sen mukaan, mikä vaatii vähiten, jotta saat edes jotain. Kortin ⏱ on eri laskelma: mitä kaiken vieminen maksaa.",
                 noInventoryData: "Ei inventaariota: ei tiedetä mitä omistat tai kuinka paljon olet katsonut.",
                 dailyStreakReminder: "Päivittäinen palkinto: katsottu {done}/{total} min. Älä menetä putkeasi tänään.",
+                streakLabel: "Putki",
+                streakResetsIn: "nollautuu {t} kuluttua",
+                streakSafe: "tänään turvassa",
+                streakAtRisk: "tänään vaarassa",
+                streakRead: "Napsauta lukeaksesi putkesi: avaa ja sulkee Kickin arkun, joka sen tuo",
+                streakSilence: "Vaimenna ilmoitus. Mittari jää näkyviin kunnes pelastat putken, ja soi huomenna uudestaan jos se on yhä tekemättä",
                 urgentClosesIn: "päättyy",
                 urgentNeed: "jäljellä",
                 urgentNoTime: "aika ei riitä",
@@ -1259,7 +1355,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Thông tin script", scriptInfoName: "Tên:",
                 scriptInfoVersion: "Phiên bản:", scriptInfoDescription: "Mô tả:",
-                scriptInfoDescriptionText: "Làm nổi bật ngay trên trang những chiến dịch drop khớp với từ khóa của bạn: xanh lá ở thẻ chiến dịch, xanh dương ở sắp tới, đỏ ở đã đóng. Bảng điều khiển liệt kê chúng tách thành đang mở, sắp tới và đã đóng —cả ba cùng lúc, vì nó đọc từ API: các thẻ của Kick tải lại trang, nên nếu chỉ đọc thứ đang ở trước mặt thì không bao giờ thấy được cả ba cùng nhau—, kèm khoảng thời gian, từ khóa đã khớp và từng phần thưởng với số giờ nó đòi hỏi. Một từ khóa khớp ở bất kỳ đâu trong văn bản, nên «rage» tìm ra chiến dịch tên «averageaden $5 Bonus»; thẻ cho biết đó là từ khóa nào, để không có mục nào xuất hiện mà không giải thích lý do. Những phần thưởng bạn đã có được đánh dấu và gạch ngang từng cái một, và huy hiệu không còn gì để giành sẽ bỏ đi thời gian xem mà nó đòi. Thứ bạn đã đạt được nhưng chưa nhận được đánh dấu riêng bằng 🎁 —không làm mờ— vì chỉ còn thiếu một cú nhấp, và cảnh báo sắp đóng cũng đếm chúng. Thứ sắp đóng lên trước: khi một phần thưởng bạn chưa có chỉ còn dưới 72 giờ, thẻ của nó cho biết còn bao lâu và bạn còn thiếu bao nhiêu thời gian xem —đỏ khi dưới 24 giờ— hoặc là không còn kịp nữa, và cùng biểu tượng ⏳ ấy xuất hiện trên thẻ của chiến dịch ngay trên trang. Các chiến dịch sắp tới cũng mang theo phần thưởng và chi phí của từng mốc, nhưng không bao giờ có hạn chót: trước khi mở thì không có gì gấp, và một đồng hồ đếm ngược từ hôm trước chỉ gây lo. Và một chiến dịch đã đóng mà bạn đã nhận hết thì không được liệt kê, vì Kick chuyển nó sang mục đã nhận: bảng không hiển thị những dòng mà trang không có. Từ khóa có thể chỉnh sửa: nhấp vào một từ để xóa, + để thêm, sửa cả loạt hoặc khôi phục mặc định. Từ khóa bắt đầu bằng «-» sẽ loại trừ: «-console» loại chiến dịch ra dù một từ khóa khác đã tìm thấy nó, và mang theo cả phần tô sáng, thẻ lẫn thông báo. Và bốn bộ lọc hiển thị rút gọn danh sách đang mở mà không đụng đến thứ gì khác —cái bạn còn thiếu, cái sắp đóng, cái bạn đã đạt mà chưa nhận, và cái lấy được trong một giờ hoặc ít hơn—: chúng cộng dồn, được ghi nhớ, và thẻ cho biết đang hiện bao nhiêu trên tổng bao nhiêu. Danh sách đang mở được sắp theo cái đóng trước hoặc theo cái đòi ít thời gian nhất, tùy bạn chọn. Và mỗi chiến dịch đang mở mang trên thẻ của chính nó trên trang thời gian bạn còn thiếu để lấy hết phần còn lại —phần thưởng đắt nhất của nó, vì thời gian xem được tính theo chiến dịch—, để chi phí nhìn thấy được khi cuộn trang. Các chiến dịch đang mở và sắp tới có thể sao chép thành văn bản bằng 🔗: tiêu đề, ngày tháng và phần thưởng, kèm liên kết đến thẻ nơi chúng nằm —chiến dịch hoặc sắp tới— vì ở Kick một chiến dịch không có địa chỉ riêng. Nếu dữ liệu về thứ đã nhận và thời gian đã xem không bao giờ đến —không có nó thì không biết bạn có gì hay đã xem bao nhiêu— bảng điều khiển sẽ nói ra, thay vì im lặng với các dấu bị tắt. Ở bất cứ đâu Kick vẽ thanh tiến độ, rê chuột sẽ cho biết chính xác bạn còn thiếu bao nhiêu thời gian xem, và nhấp vào sẽ mở chi tiết của drop. Thẻ đã nhận có lưới riêng, lưới này còn cho biết bạn nhận mỗi thứ từ bao lâu trước, và nó thay thế danh sách của Kick để không hiển thị cùng một thứ hai lần. Ô đánh dấu ẩn những gì đã hoàn tất và bật nhận tự động, cả với drop đã xong lẫn với rương phần thưởng hằng ngày mà Kick trao cho việc xem stream (vốn không phải là drop): rương chỉ được mở khi phần thưởng thực sự có sẵn, việc phát hiện không phụ thuộc vào ngôn ngữ, và luôn được kiểm tra sau các drop, không bao giờ ở giữa. Và nó cũng nhận ở thẻ đã đóng: thứ kết thúc cùng chiến dịch là tiến độ, không phải thứ bạn đã đạt được, nên phần thưởng bạn đã mở khóa trước khi đóng vẫn được nhận từ đó. Và những gì nó ẩn bao gồm cả phần thưởng bạn đã nhận, thứ mà Kick để lại trên trang như một ô trơ trọi: điều quyết định nó đã được nhận là dữ liệu đã nhận của bạn, không phải hình dạng của trang. Và cái hòm đó cũng xuất hiện như một ô nữa trong lưới, kèm thanh tiến độ của Kick: còn thiếu bao nhiêu phút xem —rê chuột sẽ nói, và nhấp vào sẽ mở cửa sổ của nó mà không nhận gì—, rằng nó sẽ tự được nhận khi xong, và —ngay khi có thể nhận— một nút nhận nó và để nguyên kết quả của Kick đang mở. Và chỉ của hôm nay: khi cửa sổ trong ngày đóng lại, ô biến mất cho đến khi có thử thách mới. Đánh dấu 🔔 —trong bảng và trên chính thẻ— những chiến dịch đã thay đổi kể từ lần trước, kèm số lượng đang chờ, thông báo trên màn hình nền và nút 👁️ để đánh dấu đã xem và đưa bạn đến thẻ chiến dịch. 16 ngôn ngữ.",
+                scriptInfoDescriptionText: "Làm nổi bật ngay trên trang những chiến dịch drop khớp với từ khóa của bạn: xanh lá ở thẻ chiến dịch, xanh dương ở sắp tới, đỏ ở đã đóng. Bảng điều khiển liệt kê chúng tách thành đang mở, sắp tới và đã đóng —cả ba cùng lúc, vì nó đọc từ API: các thẻ của Kick tải lại trang, nên nếu chỉ đọc thứ đang ở trước mặt thì không bao giờ thấy được cả ba cùng nhau—, kèm khoảng thời gian, từ khóa đã khớp và từng phần thưởng với số giờ nó đòi hỏi. Một từ khóa khớp ở bất kỳ đâu trong văn bản, nên «rage» tìm ra chiến dịch tên «averageaden $5 Bonus»; thẻ cho biết đó là từ khóa nào, để không có mục nào xuất hiện mà không giải thích lý do. Những phần thưởng bạn đã có được đánh dấu và gạch ngang từng cái một, và huy hiệu không còn gì để giành sẽ bỏ đi thời gian xem mà nó đòi. Thứ bạn đã đạt được nhưng chưa nhận được đánh dấu riêng bằng 🎁 —không làm mờ— vì chỉ còn thiếu một cú nhấp, và cảnh báo sắp đóng cũng đếm chúng. Thứ sắp đóng lên trước: khi một phần thưởng bạn chưa có chỉ còn dưới 72 giờ, thẻ của nó cho biết còn bao lâu và bạn còn thiếu bao nhiêu thời gian xem —đỏ khi dưới 24 giờ— hoặc là không còn kịp nữa, và cùng biểu tượng ⏳ ấy xuất hiện trên thẻ của chiến dịch ngay trên trang. Các chiến dịch sắp tới cũng mang theo phần thưởng và chi phí của từng mốc, nhưng không bao giờ có hạn chót: trước khi mở thì không có gì gấp, và một đồng hồ đếm ngược từ hôm trước chỉ gây lo. Và một chiến dịch đã đóng mà bạn đã nhận hết thì không được liệt kê, vì Kick chuyển nó sang mục đã nhận: bảng không hiển thị những dòng mà trang không có. Từ khóa có thể chỉnh sửa: nhấp vào một từ để xóa, + để thêm, sửa cả loạt hoặc khôi phục mặc định. Từ khóa bắt đầu bằng «-» sẽ loại trừ: «-console» loại chiến dịch ra dù một từ khóa khác đã tìm thấy nó, và mang theo cả phần tô sáng, thẻ lẫn thông báo. Và bốn bộ lọc hiển thị rút gọn danh sách đang mở mà không đụng đến thứ gì khác —cái bạn còn thiếu, cái sắp đóng, cái bạn đã đạt mà chưa nhận, và cái lấy được trong một giờ hoặc ít hơn—: chúng cộng dồn, được ghi nhớ, và thẻ cho biết đang hiện bao nhiêu trên tổng bao nhiêu. Danh sách đang mở được sắp theo cái đóng trước hoặc theo cái đòi ít thời gian nhất, tùy bạn chọn. Và mỗi chiến dịch đang mở mang trên thẻ của chính nó trên trang thời gian bạn còn thiếu để lấy hết phần còn lại —phần thưởng đắt nhất của nó, vì thời gian xem được tính theo chiến dịch—, để chi phí nhìn thấy được khi cuộn trang. Các chiến dịch đang mở và sắp tới có thể sao chép thành văn bản bằng 🔗: tiêu đề, ngày tháng và phần thưởng, kèm liên kết đến thẻ nơi chúng nằm —chiến dịch hoặc sắp tới— vì ở Kick một chiến dịch không có địa chỉ riêng. Nếu dữ liệu về thứ đã nhận và thời gian đã xem không bao giờ đến —không có nó thì không biết bạn có gì hay đã xem bao nhiêu— bảng điều khiển sẽ nói ra, thay vì im lặng với các dấu bị tắt. Ở bất cứ đâu Kick vẽ thanh tiến độ, rê chuột sẽ cho biết chính xác bạn còn thiếu bao nhiêu thời gian xem, và nhấp vào sẽ mở chi tiết của drop. Thẻ đã nhận có lưới riêng, lưới này còn cho biết bạn nhận mỗi thứ từ bao lâu trước, và nó thay thế danh sách của Kick để không hiển thị cùng một thứ hai lần. Ô đánh dấu ẩn những gì đã hoàn tất và bật nhận tự động, cả với drop đã xong lẫn với rương phần thưởng hằng ngày mà Kick trao cho việc xem stream (vốn không phải là drop): rương chỉ được mở khi phần thưởng thực sự có sẵn, việc phát hiện không phụ thuộc vào ngôn ngữ, và luôn được kiểm tra sau các drop, không bao giờ ở giữa. Và nó cũng nhận ở thẻ đã đóng: thứ kết thúc cùng chiến dịch là tiến độ, không phải thứ bạn đã đạt được, nên phần thưởng bạn đã mở khóa trước khi đóng vẫn được nhận từ đó. Và những gì nó ẩn bao gồm cả phần thưởng bạn đã nhận, thứ mà Kick để lại trên trang như một ô trơ trọi: điều quyết định nó đã được nhận là dữ liệu đã nhận của bạn, không phải hình dạng của trang. Và cái hòm đó cũng xuất hiện như một ô nữa trong lưới, kèm thanh tiến độ của Kick: còn thiếu bao nhiêu phút xem —rê chuột sẽ nói, và nhấp vào sẽ mở cửa sổ của nó mà không nhận gì—, rằng nó sẽ tự được nhận khi xong, và —ngay khi có thể nhận— một nút nhận nó và để nguyên kết quả của Kick đang mở. Và chỉ của hôm nay: khi cửa sổ trong ngày đóng lại, ô biến mất cho đến khi có thử thách mới. Đánh dấu 🔔 —trong bảng và trên chính thẻ— những chiến dịch đã thay đổi kể từ lần trước, kèm số lượng đang chờ, thông báo trên màn hình nền và nút 👁️ để đánh dấu đã xem và đưa bạn đến thẻ chiến dịch. Và chuỗi ngày hằng ngày không còn là một dòng nữa: bảng vẽ thanh đo của rương —số ngày liên tiếp, số phút đã xem, khi nào đặt lại và đã an toàn chưa— và không thể tắt cho tới khi bạn giữ được chuỗi; nút 👁️ chỉ tắt tiếng và bộ đếm, nó kêu mỗi ngày một lần và mỗi cửa sổ một lần, và khi ô được tích thì bảng ở lại thẻ đó cho tới khi chuỗi an toàn. 16 ngôn ngữ.",
                 scriptInfoAuthor: "Tác giả:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Đang đọc thay đổi drop từ API...",
                 earnedUnclaimed: "đã đạt, chưa nhận",
@@ -1278,6 +1374,12 @@
                 sortCheapestHint: "Sắp xếp theo thứ đòi hỏi ít nhất để lấy được một thứ gì đó. ⏱ trên thẻ là con số khác: chi phí để lấy hết mọi thứ.",
                 noInventoryData: "Không có kho đồ: không biết bạn đã có gì hay đã xem bao lâu.",
                 dailyStreakReminder: "Phần thưởng hằng ngày: đã xem {done}/{total} phút. Đừng để mất chuỗi ngày hôm nay.",
+                streakLabel: "Chuỗi ngày",
+                streakResetsIn: "đặt lại sau {t}",
+                streakSafe: "hôm nay an toàn",
+                streakAtRisk: "hôm nay có nguy cơ",
+                streakRead: "Bấm để đọc chuỗi ngày: mở rồi đóng rương của Kick, nơi mang dữ liệu đó",
+                streakSilence: "Tắt tiếng thông báo. Thanh đo vẫn ở đó cho tới khi bạn giữ được chuỗi ngày, và mai sẽ kêu lại nếu vẫn chưa xong",
                 urgentClosesIn: "kết thúc sau",
                 urgentNeed: "còn thiếu",
                 urgentNoTime: "không kịp",
@@ -1322,7 +1424,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "脚本信息", scriptInfoName: "名称：",
                 scriptInfoVersion: "版本：", scriptInfoDescription: "描述：",
-                scriptInfoDescriptionText: "在页面上直接高亮与你的关键词匹配的掉宝活动：活动标签页为绿色，即将推出为蓝色，已结束为红色。面板会把它们分成进行中、即将推出和已结束三类列出 —三类同时显示，因为它是从 API 读取的：Kick 的标签页会重新加载页面，只读眼前的内容永远不可能同时看到三类—，并附上日期区间、命中的关键词，以及每项奖励所需的时长。关键词可以匹配文本中的任意位置，所以“rage”能找到名为“averageaden $5 Bonus”的活动；卡片会说明是哪个关键词命中的，这样就不会有活动无缘无故地出现。你已经拥有的奖励会逐个打勾并加上删除线，而一个已经没有东西可拿的徽章会去掉它原本要求的观看时长。你已经赚到但还没领取的会用 🎁 单独标出 —不做淡化处理—，因为它只差一次点击，而且即将结束的提醒也会把它们计算在内。快要结束的排在最前：当你还没拿到的奖励剩余时间进入 72 小时以内时，它的卡片会说明还剩多久、你还需要看多久 —低于 24 小时显示红色—，或者说明已经来不及了，同样的 ⏳ 也会出现在页面上该活动自己的卡片上。即将推出的活动也会显示它的奖励和每个档位所需的时间，但不会显示截止时间：活动开始之前没有什么要赶的，提前一天倒计时只会让人紧张。而已经全部领取的已结束活动不会被列出，因为 Kick 会把它移到已领取：面板不会显示页面上并不存在的条目。关键词可以编辑：点击即可删除，+ 用来添加，可以批量编辑或恢复默认。以“-”开头的关键词表示排除：“-console”会把该活动剔除，即使另一个关键词已经找到了它，并且连同高亮、卡片和提醒一起带走。另外四个视图筛选只会缩减进行中的列表，不影响其他任何东西 —你还缺的、快要结束的、已赚到但未领取的，以及一小时以内就能拿到的—：它们可以叠加，会被记住，标签页也会显示当前显示了多少张、总共有多少张。进行中的列表可以按最先结束排序，也可以按所需时间最少排序，由你选择。每个进行中的活动还会在页面上自己的卡片里显示你把剩下的全部拿走还需要多少时间 —取其中最贵的那项奖励，因为观看时长是按活动统计的—，这样滚动页面时就能看到代价。进行中和即将推出的活动都可以用 🔗 复制为文本：标题、日期和奖励，并附上它所在标签页的链接 —活动或即将推出—，因为在 Kick 里一个活动没有属于自己的网址。如果你的已领取和已观看数据始终没有到达 —没有它就无法知道你拥有什么、看了多久—，面板会直接说明，而不是把标记关掉后保持沉默。凡是 Kick 画出进度条的地方，把鼠标移上去就会准确地告诉你还差多少观看时长，点击则会打开该掉宝的详情。已领取标签页会有一个自己的网格，还会告诉你每样东西是多久之前拿到的，并取代 Kick 的列表，以免同样的内容显示两次。复选框会隐藏已完成的内容，并开启自动领取，既包括已完成的掉宝，也包括 Kick 因观看直播而发放的每日奖励宝箱（那并不是掉宝）：宝箱只有在奖励确实可领取时才会打开，检测方式不依赖语言，并且始终在处理完掉宝之后再检查，绝不会在中途进行。而且在已关闭标签页里也会领取：随活动结束的是进度，不是你已经赚到的东西，所以在关闭前解锁的奖励仍然从那里领取。它隐藏的已完成内容还包括你已经领取的奖励：Kick 会把它留在页面上，只剩图片和名称；判断它是否已领取的是你的领取数据，而不是页面的样子。而且这个宝箱也会作为网格里的一块出现，还带着 Kick 的进度条：还差多少观看分钟——把鼠标移上去就会说，点击则会打开它的窗口而不领取任何东西——、时间到了会自动领取，以及一旦可以领取时的领取按钮——领完会让 Kick 的结果保持打开。而且只显示今天的：当天的时段一过，这一块就会消失，直到新的挑战到来。自上次查看以来发生变化的活动会用 🔔 标出 —面板里和卡片本身都有—，另有待处理数量、桌面通知，以及一个 👁️ 按钮，点击后把它们标为已读并带你前往活动标签页。支持 16 种语言。",
+                scriptInfoDescriptionText: "在页面上直接高亮与你的关键词匹配的掉宝活动：活动标签页为绿色，即将推出为蓝色，已结束为红色。面板会把它们分成进行中、即将推出和已结束三类列出 —三类同时显示，因为它是从 API 读取的：Kick 的标签页会重新加载页面，只读眼前的内容永远不可能同时看到三类—，并附上日期区间、命中的关键词，以及每项奖励所需的时长。关键词可以匹配文本中的任意位置，所以“rage”能找到名为“averageaden $5 Bonus”的活动；卡片会说明是哪个关键词命中的，这样就不会有活动无缘无故地出现。你已经拥有的奖励会逐个打勾并加上删除线，而一个已经没有东西可拿的徽章会去掉它原本要求的观看时长。你已经赚到但还没领取的会用 🎁 单独标出 —不做淡化处理—，因为它只差一次点击，而且即将结束的提醒也会把它们计算在内。快要结束的排在最前：当你还没拿到的奖励剩余时间进入 72 小时以内时，它的卡片会说明还剩多久、你还需要看多久 —低于 24 小时显示红色—，或者说明已经来不及了，同样的 ⏳ 也会出现在页面上该活动自己的卡片上。即将推出的活动也会显示它的奖励和每个档位所需的时间，但不会显示截止时间：活动开始之前没有什么要赶的，提前一天倒计时只会让人紧张。而已经全部领取的已结束活动不会被列出，因为 Kick 会把它移到已领取：面板不会显示页面上并不存在的条目。关键词可以编辑：点击即可删除，+ 用来添加，可以批量编辑或恢复默认。以“-”开头的关键词表示排除：“-console”会把该活动剔除，即使另一个关键词已经找到了它，并且连同高亮、卡片和提醒一起带走。另外四个视图筛选只会缩减进行中的列表，不影响其他任何东西 —你还缺的、快要结束的、已赚到但未领取的，以及一小时以内就能拿到的—：它们可以叠加，会被记住，标签页也会显示当前显示了多少张、总共有多少张。进行中的列表可以按最先结束排序，也可以按所需时间最少排序，由你选择。每个进行中的活动还会在页面上自己的卡片里显示你把剩下的全部拿走还需要多少时间 —取其中最贵的那项奖励，因为观看时长是按活动统计的—，这样滚动页面时就能看到代价。进行中和即将推出的活动都可以用 🔗 复制为文本：标题、日期和奖励，并附上它所在标签页的链接 —活动或即将推出—，因为在 Kick 里一个活动没有属于自己的网址。如果你的已领取和已观看数据始终没有到达 —没有它就无法知道你拥有什么、看了多久—，面板会直接说明，而不是把标记关掉后保持沉默。凡是 Kick 画出进度条的地方，把鼠标移上去就会准确地告诉你还差多少观看时长，点击则会打开该掉宝的详情。已领取标签页会有一个自己的网格，还会告诉你每样东西是多久之前拿到的，并取代 Kick 的列表，以免同样的内容显示两次。复选框会隐藏已完成的内容，并开启自动领取，既包括已完成的掉宝，也包括 Kick 因观看直播而发放的每日奖励宝箱（那并不是掉宝）：宝箱只有在奖励确实可领取时才会打开，检测方式不依赖语言，并且始终在处理完掉宝之后再检查，绝不会在中途进行。而且在已关闭标签页里也会领取：随活动结束的是进度，不是你已经赚到的东西，所以在关闭前解锁的奖励仍然从那里领取。它隐藏的已完成内容还包括你已经领取的奖励：Kick 会把它留在页面上，只剩图片和名称；判断它是否已领取的是你的领取数据，而不是页面的样子。而且这个宝箱也会作为网格里的一块出现，还带着 Kick 的进度条：还差多少观看分钟——把鼠标移上去就会说，点击则会打开它的窗口而不领取任何东西——、时间到了会自动领取，以及一旦可以领取时的领取按钮——领完会让 Kick 的结果保持打开。而且只显示今天的：当天的时段一过，这一块就会消失，直到新的挑战到来。自上次查看以来发生变化的活动会用 🔔 标出 —面板里和卡片本身都有—，另有待处理数量、桌面通知，以及一个 👁️ 按钮，点击后把它们标为已读并带你前往活动标签页。而每日连续记录不再只是一行：面板会画出宝箱的计量条——连续天数、已观看的分钟、何时重置以及是否已保住——在你保住它之前无法关闭；👁️ 只关掉提示音和计数，每天、每个窗口各响一次，勾选复选框后面板会一直停在那个标签页，直到连续记录安全为止。 支持 16 种语言。",
                 scriptInfoAuthor: "作者：", scriptInfoGitHub: "GitHub：",
                 readingApiDrops: "正在从 API 读取掉宝变更...",
                 earnedUnclaimed: "已达成，未领取",
@@ -1341,6 +1443,12 @@
                 sortCheapestHint: "按最快能拿到一样奖励的顺序排列。卡片上的⏱是另一笔账：拿走全部所需的时间。",
                 noInventoryData: "无库存数据：不清楚你已拥有什么、看了多久。",
                 dailyStreakReminder: "每日奖励：已观看 {done}/{total} 分钟。别让今天的连续记录中断。",
+                streakLabel: "连续记录",
+                streakResetsIn: "{t} 后重置",
+                streakSafe: "今天已保住",
+                streakAtRisk: "今天有风险",
+                streakRead: "点击读取你的连续记录：会打开并关闭 Kick 的宝箱，数据来自那里",
+                streakSilence: "静音提醒。在你保住连续记录之前计量条会一直显示，若仍未完成明天会再响一次",
                 urgentClosesIn: "距结束",
                 urgentNeed: "还需",
                 urgentNoTime: "时间不够",
@@ -1385,7 +1493,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "معلومات السكربت", scriptInfoName: "الاسم:",
                 scriptInfoVersion: "الإصدار:", scriptInfoDescription: "الوصف:",
-                scriptInfoDescriptionText: "يبرز في الصفحة نفسها حملات الدروبس التي تطابق كلماتك المفتاحية: أخضر في تبويب الحملات، أزرق في القادمة، أحمر في المنتهية. تسرد اللوحة هذه الحملات مقسّمة إلى نشطة وقادمة ومنتهية —الثلاثة معًا، لأنها تقرأها من الـ API: تبويبات Kick تعيد تحميل الصفحة، فلو اكتُفي بقراءة ما أمامك لما ظهرت الثلاثة مجتمعة أبدًا—، مع نافذة التواريخ، والكلمة المفتاحية التي طابقت، وكل مكافأة مع الساعات التي تطلبها. الكلمة المفتاحية تطابق في أي موضع من النص، لذلك تجد «rage» حملة اسمها «averageaden $5 Bonus»؛ وتذكر البطاقة أي كلمة كانت، حتى لا تظهر أي حملة دون تفسير سبب ظهورها. المكافآت التي تملكها بالفعل تُعلَّم بعلامة صح ويُشطب اسمها واحدة واحدة، والشارة التي لم يعد فيها ما يُكسب تفقد وقت المشاهدة الذي كانت تطلبه. أما ما كسبته ولم تستلمه بعد فيُميَّز على حدة بـ 🎁 —دون تعتيم— لأنه لا ينقصه سوى نقرة، وتحسبه أيضًا تنبيهات قرب الإغلاق. ما يوشك على الإغلاق يتقدم أولًا: عندما يتبقى لمكافأة لا تملكها بعد أقل من 72 ساعة، تقول بطاقتها كم بقي وكم ينقصك من وقت المشاهدة —بالأحمر تحت 24 ساعة— أو أن الوقت لم يعد يكفي، وتظهر الأيقونة ⏳ نفسها على بطاقة الحملة في الصفحة. الحملات القادمة تحمل أيضًا مكافآتها وما يطلبه كل مستوى، لكنها لا تحمل مهلة أبدًا: قبل أن تبدأ لا شيء عاجل، والعد التنازلي في اليوم السابق لا يفعل سوى إثارة القلق. والحملة المنتهية التي استلمتها بالكامل لا تُدرج، لأن Kick ينقلها إلى المستلَم: اللوحة لا تعرض صفوفًا لا توجد في الصفحة. الكلمات المفتاحية قابلة للتعديل: انقر على واحدة لحذفها، و+ للإضافة، وعدّلها دفعة واحدة أو استعد الافتراضية. الكلمة التي تبدأ بـ «-» تستبعد: «-console» تُخرج الحملة حتى لو وجدتها كلمة أخرى، وتأخذ معها التمييز والبطاقة والتنبيه. وأربعة مرشحات عرض تختصر قائمة المفتوحة دون أن تمس أي شيء آخر —ما ينقصك، وما يغلق قريبًا، وما كسبته ولم تستلمه، وما يمكن الحصول عليه في ساعة أو أقل—: تتراكم معًا، وتُحفظ، ويقول التبويب كم بطاقة تُعرض من أصل كم. تُرتَّب قائمة المفتوحة حسب الأقرب إغلاقًا أو حسب الأقل طلبًا للوقت، كما تختار. وكل حملة مفتوحة تحمل، في بطاقتها الخاصة داخل الصفحة، الوقت الذي ينقصك لأخذ كل ما تبقى —أغلى مكافأة فيها، لأن وقت المشاهدة يُحسب لكل حملة—، حتى تظهر التكلفة أثناء التمرير. يمكن نسخ الحملات المفتوحة والقادمة كنص عبر 🔗: العنوان والتواريخ والمكافآت، مع رابط إلى التبويب الذي توجد فيه —الحملات أو القادمة— لأن الحملة في Kick ليس لها عنوان خاص بها. وإذا لم تصل بيانات ما استلمته وما شاهدته —وبدونها لا يمكن معرفة ما تملكه ولا كم شاهدت— فإن اللوحة تقول ذلك بدل أن تصمت وعلاماتها مطفأة. وأينما رسم Kick شريط تقدّم، فإن تمرير المؤشر يخبرك بالضبط كم ينقصك من وقت المشاهدة، والنقر يفتح تفاصيل الدروب. ويحصل تبويب المستلَم على شبكة خاصة به تقول أيضًا منذ متى حصلت على كل شيء، وتحل محل قائمة Kick حتى لا يُعرض الشيء نفسه مرتين. ومربع الاختيار يخفي ما اكتمل ويشغّل الاستلام التلقائي، للدروبس المنتهية ولصندوق المكافأة اليومية الذي يمنحه Kick مقابل مشاهدة البثوث (وهو ليس دروب): لا يُفتح الصندوق إلا عندما تكون المكافأة متاحة فعلًا، ويُكتشف دون الاعتماد على اللغة، ويُراجَع دائمًا بعد الدروبس، لا في أثنائها أبدًا. وتستلم أيضًا في تبويب المنتهية: ما ينتهي مع الحملة هو التقدّم، لا ما كسبته بالفعل، لذلك تبقى المكافأة التي فتحتها قبل الإغلاق قابلة للاستلام من هناك. وما يخفيه يشمل المكافأة التي استلمتها بالفعل، والتي يتركها Kick في الصفحة كمربع أجرد: وما يحدد أنها مستلمة هو بيانات استلامك، لا شكل الصفحة. ويظهر الصندوق أيضًا كبطاقة أخرى في هذه الشبكة، مع شريط تقدّم Kick: كم دقيقة مشاهدة تبقّت له —يقولها مرور المؤشر، والنقر يفتح نافذته دون أن يستلم شيئًا—، وأنه سيُستلم تلقائيًا عند انتهائها، و—بمجرد أن يصبح قابلًا للاستلام— زر يستلمه ويترك نتيجة Kick مفتوحة. وبطاقة اليوم وحدها: بانتهاء نافذة اليوم تختفي حتى يصل التحدي الجديد. ويضع علامة 🔔 —في اللوحة وعلى البطاقة نفسها— على الحملات التي تغيّرت منذ آخر مرة، مع عدّاد للمعلّق، وإشعار على سطح المكتب، وزر 👁️ يعتبرها مقروءة وينقلك إلى تبويب الحملات. 16 لغة.",
+                scriptInfoDescriptionText: "يبرز في الصفحة نفسها حملات الدروبس التي تطابق كلماتك المفتاحية: أخضر في تبويب الحملات، أزرق في القادمة، أحمر في المنتهية. تسرد اللوحة هذه الحملات مقسّمة إلى نشطة وقادمة ومنتهية —الثلاثة معًا، لأنها تقرأها من الـ API: تبويبات Kick تعيد تحميل الصفحة، فلو اكتُفي بقراءة ما أمامك لما ظهرت الثلاثة مجتمعة أبدًا—، مع نافذة التواريخ، والكلمة المفتاحية التي طابقت، وكل مكافأة مع الساعات التي تطلبها. الكلمة المفتاحية تطابق في أي موضع من النص، لذلك تجد «rage» حملة اسمها «averageaden $5 Bonus»؛ وتذكر البطاقة أي كلمة كانت، حتى لا تظهر أي حملة دون تفسير سبب ظهورها. المكافآت التي تملكها بالفعل تُعلَّم بعلامة صح ويُشطب اسمها واحدة واحدة، والشارة التي لم يعد فيها ما يُكسب تفقد وقت المشاهدة الذي كانت تطلبه. أما ما كسبته ولم تستلمه بعد فيُميَّز على حدة بـ 🎁 —دون تعتيم— لأنه لا ينقصه سوى نقرة، وتحسبه أيضًا تنبيهات قرب الإغلاق. ما يوشك على الإغلاق يتقدم أولًا: عندما يتبقى لمكافأة لا تملكها بعد أقل من 72 ساعة، تقول بطاقتها كم بقي وكم ينقصك من وقت المشاهدة —بالأحمر تحت 24 ساعة— أو أن الوقت لم يعد يكفي، وتظهر الأيقونة ⏳ نفسها على بطاقة الحملة في الصفحة. الحملات القادمة تحمل أيضًا مكافآتها وما يطلبه كل مستوى، لكنها لا تحمل مهلة أبدًا: قبل أن تبدأ لا شيء عاجل، والعد التنازلي في اليوم السابق لا يفعل سوى إثارة القلق. والحملة المنتهية التي استلمتها بالكامل لا تُدرج، لأن Kick ينقلها إلى المستلَم: اللوحة لا تعرض صفوفًا لا توجد في الصفحة. الكلمات المفتاحية قابلة للتعديل: انقر على واحدة لحذفها، و+ للإضافة، وعدّلها دفعة واحدة أو استعد الافتراضية. الكلمة التي تبدأ بـ «-» تستبعد: «-console» تُخرج الحملة حتى لو وجدتها كلمة أخرى، وتأخذ معها التمييز والبطاقة والتنبيه. وأربعة مرشحات عرض تختصر قائمة المفتوحة دون أن تمس أي شيء آخر —ما ينقصك، وما يغلق قريبًا، وما كسبته ولم تستلمه، وما يمكن الحصول عليه في ساعة أو أقل—: تتراكم معًا، وتُحفظ، ويقول التبويب كم بطاقة تُعرض من أصل كم. تُرتَّب قائمة المفتوحة حسب الأقرب إغلاقًا أو حسب الأقل طلبًا للوقت، كما تختار. وكل حملة مفتوحة تحمل، في بطاقتها الخاصة داخل الصفحة، الوقت الذي ينقصك لأخذ كل ما تبقى —أغلى مكافأة فيها، لأن وقت المشاهدة يُحسب لكل حملة—، حتى تظهر التكلفة أثناء التمرير. يمكن نسخ الحملات المفتوحة والقادمة كنص عبر 🔗: العنوان والتواريخ والمكافآت، مع رابط إلى التبويب الذي توجد فيه —الحملات أو القادمة— لأن الحملة في Kick ليس لها عنوان خاص بها. وإذا لم تصل بيانات ما استلمته وما شاهدته —وبدونها لا يمكن معرفة ما تملكه ولا كم شاهدت— فإن اللوحة تقول ذلك بدل أن تصمت وعلاماتها مطفأة. وأينما رسم Kick شريط تقدّم، فإن تمرير المؤشر يخبرك بالضبط كم ينقصك من وقت المشاهدة، والنقر يفتح تفاصيل الدروب. ويحصل تبويب المستلَم على شبكة خاصة به تقول أيضًا منذ متى حصلت على كل شيء، وتحل محل قائمة Kick حتى لا يُعرض الشيء نفسه مرتين. ومربع الاختيار يخفي ما اكتمل ويشغّل الاستلام التلقائي، للدروبس المنتهية ولصندوق المكافأة اليومية الذي يمنحه Kick مقابل مشاهدة البثوث (وهو ليس دروب): لا يُفتح الصندوق إلا عندما تكون المكافأة متاحة فعلًا، ويُكتشف دون الاعتماد على اللغة، ويُراجَع دائمًا بعد الدروبس، لا في أثنائها أبدًا. وتستلم أيضًا في تبويب المنتهية: ما ينتهي مع الحملة هو التقدّم، لا ما كسبته بالفعل، لذلك تبقى المكافأة التي فتحتها قبل الإغلاق قابلة للاستلام من هناك. وما يخفيه يشمل المكافأة التي استلمتها بالفعل، والتي يتركها Kick في الصفحة كمربع أجرد: وما يحدد أنها مستلمة هو بيانات استلامك، لا شكل الصفحة. ويظهر الصندوق أيضًا كبطاقة أخرى في هذه الشبكة، مع شريط تقدّم Kick: كم دقيقة مشاهدة تبقّت له —يقولها مرور المؤشر، والنقر يفتح نافذته دون أن يستلم شيئًا—، وأنه سيُستلم تلقائيًا عند انتهائها، و—بمجرد أن يصبح قابلًا للاستلام— زر يستلمه ويترك نتيجة Kick مفتوحة. وبطاقة اليوم وحدها: بانتهاء نافذة اليوم تختفي حتى يصل التحدي الجديد. ويضع علامة 🔔 —في اللوحة وعلى البطاقة نفسها— على الحملات التي تغيّرت منذ آخر مرة، مع عدّاد للمعلّق، وإشعار على سطح المكتب، وزر 👁️ يعتبرها مقروءة وينقلك إلى تبويب الحملات. ولم تعد السلسلة اليومية مجرد سطر آخر: تعرض اللوحة مؤشر الصندوق —الأيام المتتالية، والدقائق المشاهَدة، وموعد إعادة الضبط، وهل هي آمنة— ولا يمكن إغلاقه حتى تنقذ السلسلة؛ والـ 👁️ يكتم الصوت والعدّاد فقط، ويرنّ مرة في اليوم ومرة لكل نافذة، ومع تحديد المربع تبقى اللوحة في ذلك التبويب حتى تصبح السلسلة آمنة. 16 لغة.",
                 scriptInfoAuthor: "المؤلف:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "جارٍ قراءة تغييرات الدروبس من الـ API...",
                 earnedUnclaimed: "تم كسبه ولم تتم المطالبة به",
@@ -1404,6 +1512,12 @@
                 sortCheapestHint: "يرتّب حسب الأقل طلبًا للحصول على شيء ما. الرمز ⏱ على البطاقة حساب آخر: ما يكلّفه أخذ كل شيء.",
                 noInventoryData: "لا يوجد مخزون: لا يُعرف ما لديك ولا كم شاهدت.",
                 dailyStreakReminder: "المكافأة اليومية: تمت مشاهدة {done} من {total} دقيقة. لا تفقد سلسلتك اليوم.",
+                streakLabel: "السلسلة",
+                streakResetsIn: "تُعاد إلى الصفر خلال {t}",
+                streakSafe: "آمنة اليوم",
+                streakAtRisk: "في خطر اليوم",
+                streakRead: "اضغط لقراءة سلسلتك: يفتح صندوق Kick ويغلقه، فهو من يجلبها",
+                streakSilence: "كتم التنبيه. يبقى المؤشر حتى تنقذ سلسلتك، وسيرنّ غدًا مرة أخرى إن ظلت دون إنجاز",
                 urgentClosesIn: "ينتهي خلال",
                 urgentNeed: "يتبقى",
                 urgentNoTime: "الوقت لا يكفي",
@@ -1448,7 +1562,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "स्क्रिप्ट जानकारी", scriptInfoName: "नाम:",
                 scriptInfoVersion: "संस्करण:", scriptInfoDescription: "विवरण:",
-                scriptInfoDescriptionText: "आपके कीवर्ड से मेल खाने वाले ड्रॉप अभियानों को पेज पर ही हाइलाइट करता है: अभियान टैब में हरा, आगामी में नीला, समाप्त में लाल। पैनल उन्हें सक्रिय, आगामी और समाप्त में बाँटकर दिखाता है —तीनों एक साथ, क्योंकि वह उन्हें API से पढ़ता है: Kick के टैब पेज को दोबारा लोड करते हैं, इसलिए सिर्फ़ सामने जो है उसे पढ़कर तीनों कभी साथ नहीं दिखेंगे—, साथ में तारीखों की अवधि, जो कीवर्ड मेल खाया वह, और हर इनाम के साथ उसके ज़रूरी घंटे। कीवर्ड टेक्स्ट में कहीं भी मेल खाता है, इसलिए “rage” से “averageaden $5 Bonus” नाम का अभियान मिल जाता है; कार्ड बताता है कि कौन-सा कीवर्ड था, ताकि कोई भी बिना कारण बताए सामने न आए। जो इनाम आपके पास पहले से हैं उन पर एक-एक करके ✓ लगता है और वे काटे जाते हैं, और जिस बैज में कमाने को कुछ नहीं बचा उससे उसका माँगा गया समय हट जाता है। जो आपने कमा लिया है पर उठाया नहीं, उसे 🎁 के साथ अलग दिखाया जाता है —धुँधला किए बिना— क्योंकि उसमें सिर्फ़ एक क्लिक बाकी है, और बंद होने की चेतावनी उन्हें भी गिनती है। जो बंद होने वाला है वह पहले आता है: जिस इनाम को आपने अभी नहीं लिया, उसका समय 72 घंटे के भीतर आ जाए तो उसका कार्ड बताता है कि कितना बचा है और आपको कितना देखना बाकी है —24 घंटे से कम पर लाल— या यह कि अब समय नहीं बचेगा, और वही ⏳ पेज पर अभियान के अपने कार्ड पर भी आता है। आगामी अभियान भी अपने इनाम और हर स्तर की माँग दिखाते हैं, पर कोई समयसीमा नहीं: शुरू होने से पहले कुछ भी जल्दी का नहीं है, और एक दिन पहले की उलटी गिनती सिर्फ़ घबराहट देती है। और जिस समाप्त अभियान का सब कुछ आप उठा चुके हैं, वह सूची में नहीं आता, क्योंकि Kick उसे उठाए हुए में ले जाता है: पैनल उन पंक्तियों को नहीं दिखाता जो पेज पर नहीं हैं। कीवर्ड बदले जा सकते हैं: हटाने के लिए किसी पर क्लिक करें, जोड़ने के लिए +, सबको एक साथ संपादित करें या डिफ़ॉल्ट लौटाएँ। “-” से शुरू होने वाला कीवर्ड बाहर करता है: “-console” अभियान को हटा देता है, चाहे कोई दूसरा कीवर्ड उसे ढूँढ चुका हो, और अपने साथ हाइलाइट, कार्ड और सूचना भी ले जाता है। और चार व्यू फ़िल्टर खुली सूची को छोटा करते हैं, बाकी किसी चीज़ को छुए बिना —जो आपका बाकी है, जो जल्द बंद हो रहा है, जो कमाया पर उठाया नहीं, और जो एक घंटे या उससे कम में मिल जाता है—: ये आपस में जुड़ते हैं, याद रखे जाते हैं, और टैब बताता है कि कुल में से कितने कार्ड दिख रहे हैं। खुली सूची को पहले बंद होने वाले या सबसे कम समय माँगने वाले के हिसाब से क्रम में लगाया जा सकता है, जैसा आप चाहें। और हर खुला अभियान पेज पर अपने कार्ड में वह समय दिखाता है जो बाकी सब कुछ लेने के लिए आपको चाहिए —उसका सबसे महँगा इनाम, क्योंकि देखने का समय पूरे अभियान का गिना जाता है—, ताकि स्क्रॉल करते हुए लागत दिखती रहे। खुले और आगामी अभियानों को 🔗 से टेक्स्ट के रूप में कॉपी किया जा सकता है: शीर्षक, तारीख़ें और इनाम, साथ में उस टैब का लिंक जहाँ वे रहते हैं —अभियान या आगामी— क्योंकि Kick में किसी अभियान का अपना पता नहीं होता। अगर आपके उठाए हुए और देखे हुए का डेटा कभी न आए —उसके बिना यह पता नहीं चलता कि आपके पास क्या है और आपने कितना देखा है— तो पैनल यह कह देता है, बजाय इसके कि निशान बुझाकर चुप रह जाए। जहाँ भी Kick प्रगति पट्टी बनाता है, माउस ले जाने पर ठीक-ठीक पता चलता है कि कितना देखना बाकी है, और क्लिक करने पर ड्रॉप का विवरण खुलता है। उठाए हुए वाले टैब को अपनी एक ग्रिड मिलती है जो यह भी बताती है कि हर चीज़ आपको कितने समय पहले मिली, और वह Kick की सूची की जगह ले लेती है ताकि वही चीज़ दो बार न दिखे। चेकबॉक्स पूरे हो चुके को छिपाता है और अपने-आप उठाना चालू करता है — पूरे हो चुके ड्रॉप्स का भी और उस रोज़ाना इनाम की पेटी का भी जो Kick स्ट्रीम देखने पर देता है (और जो ड्रॉप नहीं है): पेटी तभी खोली जाती है जब इनाम सचमुच उपलब्ध हो, उसकी पहचान भाषा पर निर्भर नहीं करती, और उसे हमेशा ड्रॉप्स के बाद देखा जाता है, बीच में कभी नहीं। और यह समाप्त टैब में भी उठाता है: अभियान के साथ जो खत्म होती है वह प्रगति है, वह नहीं जो आपने पहले ही कमा लिया, इसलिए बंद होने से पहले खोला गया इनाम वहीं से उठाया जाता रहता है। और जो पूरा हो चुका वह छिपाता है, उसमें वह इनाम भी है जो आपने उठा लिया और जिसे Kick पेज पर एक खाली टाइल के रूप में छोड़ देता है: वह उठाया हुआ है या नहीं, यह आपके उठाए हुए के डेटा से तय होता है, पेज की शक्ल से नहीं। और वह संदूक भी इस ग्रिड में एक और टाइल की तरह दिखता है, Kick की प्रगति पट्टी के साथ: उसे कितने मिनट देखना बाकी है —माउस ले जाने पर वह बता देता है, और क्लिक करने पर कुछ उठाए बिना उसकी विंडो खुल जाती है—, कि समय पूरा होने पर वह अपने-आप उठा लिया जाएगा, और —जैसे ही उठाया जा सके— एक बटन जो उसे उठाता है और Kick का नतीजा खुला छोड़ देता है। और सिर्फ़ आज वाला: दिन की अवधि बंद होते ही टाइल गायब हो जाती है, जब तक नया चैलेंज नहीं आ जाता। पिछली बार के बाद बदले हुए अभियानों पर 🔔 लगाता है —पैनल में और खुद कार्ड पर— साथ में बाकी बचे की गिनती, डेस्कटॉप सूचना और एक 👁️ बटन जो उन्हें देखा हुआ मानकर आपको अभियान टैब पर ले जाता है। 16 भाषाएँ।",
+                scriptInfoDescriptionText: "आपके कीवर्ड से मेल खाने वाले ड्रॉप अभियानों को पेज पर ही हाइलाइट करता है: अभियान टैब में हरा, आगामी में नीला, समाप्त में लाल। पैनल उन्हें सक्रिय, आगामी और समाप्त में बाँटकर दिखाता है —तीनों एक साथ, क्योंकि वह उन्हें API से पढ़ता है: Kick के टैब पेज को दोबारा लोड करते हैं, इसलिए सिर्फ़ सामने जो है उसे पढ़कर तीनों कभी साथ नहीं दिखेंगे—, साथ में तारीखों की अवधि, जो कीवर्ड मेल खाया वह, और हर इनाम के साथ उसके ज़रूरी घंटे। कीवर्ड टेक्स्ट में कहीं भी मेल खाता है, इसलिए “rage” से “averageaden $5 Bonus” नाम का अभियान मिल जाता है; कार्ड बताता है कि कौन-सा कीवर्ड था, ताकि कोई भी बिना कारण बताए सामने न आए। जो इनाम आपके पास पहले से हैं उन पर एक-एक करके ✓ लगता है और वे काटे जाते हैं, और जिस बैज में कमाने को कुछ नहीं बचा उससे उसका माँगा गया समय हट जाता है। जो आपने कमा लिया है पर उठाया नहीं, उसे 🎁 के साथ अलग दिखाया जाता है —धुँधला किए बिना— क्योंकि उसमें सिर्फ़ एक क्लिक बाकी है, और बंद होने की चेतावनी उन्हें भी गिनती है। जो बंद होने वाला है वह पहले आता है: जिस इनाम को आपने अभी नहीं लिया, उसका समय 72 घंटे के भीतर आ जाए तो उसका कार्ड बताता है कि कितना बचा है और आपको कितना देखना बाकी है —24 घंटे से कम पर लाल— या यह कि अब समय नहीं बचेगा, और वही ⏳ पेज पर अभियान के अपने कार्ड पर भी आता है। आगामी अभियान भी अपने इनाम और हर स्तर की माँग दिखाते हैं, पर कोई समयसीमा नहीं: शुरू होने से पहले कुछ भी जल्दी का नहीं है, और एक दिन पहले की उलटी गिनती सिर्फ़ घबराहट देती है। और जिस समाप्त अभियान का सब कुछ आप उठा चुके हैं, वह सूची में नहीं आता, क्योंकि Kick उसे उठाए हुए में ले जाता है: पैनल उन पंक्तियों को नहीं दिखाता जो पेज पर नहीं हैं। कीवर्ड बदले जा सकते हैं: हटाने के लिए किसी पर क्लिक करें, जोड़ने के लिए +, सबको एक साथ संपादित करें या डिफ़ॉल्ट लौटाएँ। “-” से शुरू होने वाला कीवर्ड बाहर करता है: “-console” अभियान को हटा देता है, चाहे कोई दूसरा कीवर्ड उसे ढूँढ चुका हो, और अपने साथ हाइलाइट, कार्ड और सूचना भी ले जाता है। और चार व्यू फ़िल्टर खुली सूची को छोटा करते हैं, बाकी किसी चीज़ को छुए बिना —जो आपका बाकी है, जो जल्द बंद हो रहा है, जो कमाया पर उठाया नहीं, और जो एक घंटे या उससे कम में मिल जाता है—: ये आपस में जुड़ते हैं, याद रखे जाते हैं, और टैब बताता है कि कुल में से कितने कार्ड दिख रहे हैं। खुली सूची को पहले बंद होने वाले या सबसे कम समय माँगने वाले के हिसाब से क्रम में लगाया जा सकता है, जैसा आप चाहें। और हर खुला अभियान पेज पर अपने कार्ड में वह समय दिखाता है जो बाकी सब कुछ लेने के लिए आपको चाहिए —उसका सबसे महँगा इनाम, क्योंकि देखने का समय पूरे अभियान का गिना जाता है—, ताकि स्क्रॉल करते हुए लागत दिखती रहे। खुले और आगामी अभियानों को 🔗 से टेक्स्ट के रूप में कॉपी किया जा सकता है: शीर्षक, तारीख़ें और इनाम, साथ में उस टैब का लिंक जहाँ वे रहते हैं —अभियान या आगामी— क्योंकि Kick में किसी अभियान का अपना पता नहीं होता। अगर आपके उठाए हुए और देखे हुए का डेटा कभी न आए —उसके बिना यह पता नहीं चलता कि आपके पास क्या है और आपने कितना देखा है— तो पैनल यह कह देता है, बजाय इसके कि निशान बुझाकर चुप रह जाए। जहाँ भी Kick प्रगति पट्टी बनाता है, माउस ले जाने पर ठीक-ठीक पता चलता है कि कितना देखना बाकी है, और क्लिक करने पर ड्रॉप का विवरण खुलता है। उठाए हुए वाले टैब को अपनी एक ग्रिड मिलती है जो यह भी बताती है कि हर चीज़ आपको कितने समय पहले मिली, और वह Kick की सूची की जगह ले लेती है ताकि वही चीज़ दो बार न दिखे। चेकबॉक्स पूरे हो चुके को छिपाता है और अपने-आप उठाना चालू करता है — पूरे हो चुके ड्रॉप्स का भी और उस रोज़ाना इनाम की पेटी का भी जो Kick स्ट्रीम देखने पर देता है (और जो ड्रॉप नहीं है): पेटी तभी खोली जाती है जब इनाम सचमुच उपलब्ध हो, उसकी पहचान भाषा पर निर्भर नहीं करती, और उसे हमेशा ड्रॉप्स के बाद देखा जाता है, बीच में कभी नहीं। और यह समाप्त टैब में भी उठाता है: अभियान के साथ जो खत्म होती है वह प्रगति है, वह नहीं जो आपने पहले ही कमा लिया, इसलिए बंद होने से पहले खोला गया इनाम वहीं से उठाया जाता रहता है। और जो पूरा हो चुका वह छिपाता है, उसमें वह इनाम भी है जो आपने उठा लिया और जिसे Kick पेज पर एक खाली टाइल के रूप में छोड़ देता है: वह उठाया हुआ है या नहीं, यह आपके उठाए हुए के डेटा से तय होता है, पेज की शक्ल से नहीं। और वह संदूक भी इस ग्रिड में एक और टाइल की तरह दिखता है, Kick की प्रगति पट्टी के साथ: उसे कितने मिनट देखना बाकी है —माउस ले जाने पर वह बता देता है, और क्लिक करने पर कुछ उठाए बिना उसकी विंडो खुल जाती है—, कि समय पूरा होने पर वह अपने-आप उठा लिया जाएगा, और —जैसे ही उठाया जा सके— एक बटन जो उसे उठाता है और Kick का नतीजा खुला छोड़ देता है। और सिर्फ़ आज वाला: दिन की अवधि बंद होते ही टाइल गायब हो जाती है, जब तक नया चैलेंज नहीं आ जाता। पिछली बार के बाद बदले हुए अभियानों पर 🔔 लगाता है —पैनल में और खुद कार्ड पर— साथ में बाकी बचे की गिनती, डेस्कटॉप सूचना और एक 👁️ बटन जो उन्हें देखा हुआ मानकर आपको अभियान टैब पर ले जाता है। और दैनिक स्ट्रीक अब एक और पंक्ति नहीं है: पैनल संदूक का मीटर बनाता है —लगातार दिन, देखे गए मिनट, कब रीसेट होगा और सुरक्षित है या नहीं— और स्ट्रीक बचाने तक उसे हटाया नहीं जा सकता; 👁️ सिर्फ़ ध्वनि और गिनती बंद करता है, यह दिन में एक बार और हर विंडो में एक बार बजता है, और चेकबॉक्स लगा हो तो पैनल स्ट्रीक सुरक्षित होने तक उसी टैब पर टिका रहता है। 16 भाषाएँ।",
                 scriptInfoAuthor: "लेखक:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "API से ड्रॉप बदलाव पढ़े जा रहे हैं...",
                 earnedUnclaimed: "अर्जित, दावा बाकी",
@@ -1467,6 +1581,12 @@
                 sortCheapestHint: "कुछ भी पाने के लिए जो सबसे कम माँगता है, उसके हिसाब से क्रम लगाता है। कार्ड का ⏱ अलग हिसाब है: सब कुछ लेने में कितना लगता है।",
                 noInventoryData: "इन्वेंट्री नहीं: पता नहीं आपके पास क्या है और कितना देखा है।",
                 dailyStreakReminder: "दैनिक इनाम: {total} मिनट में से {done} मिनट देखे। आज अपनी स्ट्रीक न गँवाएँ।",
+                streakLabel: "स्ट्रीक",
+                streakResetsIn: "{t} में रीसेट",
+                streakSafe: "आज सुरक्षित",
+                streakAtRisk: "आज जोखिम में",
+                streakRead: "अपनी स्ट्रीक पढ़ने के लिए दबाएँ: Kick का संदूक खुलकर बंद होगा, वही उसे लाता है",
+                streakSilence: "सूचना म्यूट करें। स्ट्रीक बचाने तक मीटर बना रहेगा, और अधूरी रही तो कल फिर बजेगा",
                 urgentClosesIn: "समाप्त होने में",
                 urgentNeed: "बाकी",
                 urgentNoTime: "समय कम है",
@@ -1511,7 +1631,7 @@
                 addButton: "+", viewIcon: "👁️", changedIcon: "🔔",
                 scriptInfoTitle: "Informasi Script", scriptInfoName: "Nama:",
                 scriptInfoVersion: "Versi:", scriptInfoDescription: "Deskripsi:",
-                scriptInfoDescriptionText: "Menyorot langsung di halaman kampanye drop yang cocok dengan kata kuncimu: hijau di tab kampanye, biru di akan datang, merah di yang sudah berakhir. Panel menampilkannya terpisah menjadi aktif, akan datang dan berakhir —ketiganya sekaligus, karena dibaca dari API: tab Kick memuat ulang halaman, jadi dengan hanya membaca yang ada di depanmu ketiganya tidak akan pernah terlihat bersama—, lengkap dengan rentang tanggal, kata kunci yang cocok dan setiap hadiah beserta jam yang dimintanya. Kata kunci cocok di bagian mana pun dari teks, sehingga «rage» menemukan kampanye bernama «averageaden $5 Bonus»; kartu menyebutkan kata kunci mana itu, agar tidak ada yang muncul tanpa penjelasan. Hadiah yang sudah kamu miliki dicentang dan dicoret satu per satu, dan lencana yang tidak menyisakan apa pun untuk didapat kehilangan waktu tonton yang tadinya diminta. Yang sudah kamu dapatkan tapi belum diambil ditandai terpisah dengan 🎁 —tanpa diredupkan— karena hanya kurang satu klik, dan peringatan penutupan pun ikut menghitungnya. Yang segera tutup naik ke atas: ketika hadiah yang belum kamu miliki tersisa kurang dari 72 jam, kartunya menyebutkan berapa lama lagi dan berapa waktu tonton yang masih kurang —merah di bawah 24 jam— atau bahwa waktunya sudah tidak cukup, dan ⏳ yang sama muncul di kartu kampanye itu sendiri di halaman. Kampanye mendatang juga membawa hadiahnya dan berapa yang diminta setiap tingkat, tetapi tidak pernah tenggat: sebelum dibuka tidak ada yang mendesak, dan hitung mundur sehari sebelumnya hanya membuat gelisah. Dan kampanye yang sudah tertutup dan sudah kamu klaim seluruhnya tidak dicantumkan, karena Kick memindahkannya ke yang diklaim: panel tidak menampilkan baris yang tidak ada di halaman. Kata kunci bisa diubah: klik salah satu untuk menghapus, + untuk menambah, sunting sekaligus atau kembalikan ke bawaan. Kata kunci yang diawali «-» mengecualikan: «-console» membuang kampanye itu meski kata kunci lain sudah menemukannya, sekaligus membawa pergi sorotan, kartu dan pemberitahuannya. Dan empat filter tampilan memangkas daftar yang aktif tanpa menyentuh apa pun yang lain —apa yang masih kurang, apa yang segera tutup, apa yang sudah didapat tapi belum diambil, dan apa yang bisa diraih dalam satu jam atau kurang—: semuanya berlaku bersamaan, diingat, dan tab menyebutkan berapa kartu yang tampil dari berapa yang ada. Daftar aktif diurutkan berdasarkan yang tutup lebih dulu atau yang paling sedikit meminta waktu, sesuai pilihanmu. Dan setiap kampanye aktif membawa, di kartunya sendiri di halaman, waktu yang masih kamu butuhkan untuk mengambil semua sisanya —hadiah termahalnya, karena waktu tonton dihitung per kampanye—, supaya biayanya terlihat sambil menggulir. Kampanye aktif dan akan datang bisa disalin sebagai teks dengan 🔗: judul, tanggal dan hadiah, beserta tautan ke tab tempatnya berada —kampanye atau akan datang— karena di Kick sebuah kampanye tidak punya alamat sendiri. Jika data klaim dan tontonanmu tidak pernah sampai —tanpa itu tidak diketahui apa yang kamu punya maupun berapa lama kamu menonton— panel mengatakannya alih-alih diam dengan tanda-tandanya padam. Di mana pun Kick menggambar bilah kemajuan, mengarahkan tetikus akan menyebutkan dengan tepat berapa waktu tonton yang masih kurang, dan mengekliknya membuka detail drop. Tab klaim mendapat kisinya sendiri yang juga menyebutkan berapa lama sejak kamu memperoleh tiap barang, dan menggantikan daftar Kick agar hal yang sama tidak tampil dua kali. Kotak centang menyembunyikan yang sudah selesai dan menyalakan klaim otomatis, baik untuk drop yang sudah tuntas maupun untuk peti hadiah harian yang Kick berikan karena menonton siaran (yang bukan sebuah drop): peti hanya dibuka ketika hadiahnya benar-benar tersedia, dideteksi tanpa bergantung pada bahasa, dan selalu diperiksa setelah drop, tidak pernah di tengahnya. Dan ia juga mengklaim di tab yang berakhir: yang berakhir bersama kampanye adalah kemajuannya, bukan apa yang sudah kamu dapatkan, jadi hadiah yang kamu buka sebelum ditutup tetap diambil dari sana. Dan yang disembunyikannya mencakup hadiah yang sudah kamu klaim, yang Kick tinggalkan di halaman sebagai kotak kosong: yang menentukan sudah diklaim adalah data klaimmu, bukan bentuk halaman. Dan peti itu juga muncul sebagai satu kotak lagi di kisi tersebut, dengan bilah kemajuan Kick: berapa menit menonton yang masih kurang —tetikus di atasnya menyebutkannya, dan mengekliknya membuka jendelanya tanpa mengklaim apa pun—, bahwa ia akan diklaim sendiri begitu selesai, dan —begitu bisa diklaim— sebuah tombol yang mengklaimnya dan membiarkan hasil dari Kick tetap terbuka. Dan hanya milik hari ini: begitu jendela hari itu tutup, kotak itu hilang sampai tantangan baru datang. Menandai dengan 🔔 —di panel dan di kartunya sendiri— kampanye yang berubah sejak terakhir kali kamu melihat, disertai hitungan yang tertunda, notifikasi desktop dan tombol 👁️ yang menganggapnya sudah dilihat dan membawamu ke tab kampanye. 16 bahasa.",
+                scriptInfoDescriptionText: "Menyorot langsung di halaman kampanye drop yang cocok dengan kata kuncimu: hijau di tab kampanye, biru di akan datang, merah di yang sudah berakhir. Panel menampilkannya terpisah menjadi aktif, akan datang dan berakhir —ketiganya sekaligus, karena dibaca dari API: tab Kick memuat ulang halaman, jadi dengan hanya membaca yang ada di depanmu ketiganya tidak akan pernah terlihat bersama—, lengkap dengan rentang tanggal, kata kunci yang cocok dan setiap hadiah beserta jam yang dimintanya. Kata kunci cocok di bagian mana pun dari teks, sehingga «rage» menemukan kampanye bernama «averageaden $5 Bonus»; kartu menyebutkan kata kunci mana itu, agar tidak ada yang muncul tanpa penjelasan. Hadiah yang sudah kamu miliki dicentang dan dicoret satu per satu, dan lencana yang tidak menyisakan apa pun untuk didapat kehilangan waktu tonton yang tadinya diminta. Yang sudah kamu dapatkan tapi belum diambil ditandai terpisah dengan 🎁 —tanpa diredupkan— karena hanya kurang satu klik, dan peringatan penutupan pun ikut menghitungnya. Yang segera tutup naik ke atas: ketika hadiah yang belum kamu miliki tersisa kurang dari 72 jam, kartunya menyebutkan berapa lama lagi dan berapa waktu tonton yang masih kurang —merah di bawah 24 jam— atau bahwa waktunya sudah tidak cukup, dan ⏳ yang sama muncul di kartu kampanye itu sendiri di halaman. Kampanye mendatang juga membawa hadiahnya dan berapa yang diminta setiap tingkat, tetapi tidak pernah tenggat: sebelum dibuka tidak ada yang mendesak, dan hitung mundur sehari sebelumnya hanya membuat gelisah. Dan kampanye yang sudah tertutup dan sudah kamu klaim seluruhnya tidak dicantumkan, karena Kick memindahkannya ke yang diklaim: panel tidak menampilkan baris yang tidak ada di halaman. Kata kunci bisa diubah: klik salah satu untuk menghapus, + untuk menambah, sunting sekaligus atau kembalikan ke bawaan. Kata kunci yang diawali «-» mengecualikan: «-console» membuang kampanye itu meski kata kunci lain sudah menemukannya, sekaligus membawa pergi sorotan, kartu dan pemberitahuannya. Dan empat filter tampilan memangkas daftar yang aktif tanpa menyentuh apa pun yang lain —apa yang masih kurang, apa yang segera tutup, apa yang sudah didapat tapi belum diambil, dan apa yang bisa diraih dalam satu jam atau kurang—: semuanya berlaku bersamaan, diingat, dan tab menyebutkan berapa kartu yang tampil dari berapa yang ada. Daftar aktif diurutkan berdasarkan yang tutup lebih dulu atau yang paling sedikit meminta waktu, sesuai pilihanmu. Dan setiap kampanye aktif membawa, di kartunya sendiri di halaman, waktu yang masih kamu butuhkan untuk mengambil semua sisanya —hadiah termahalnya, karena waktu tonton dihitung per kampanye—, supaya biayanya terlihat sambil menggulir. Kampanye aktif dan akan datang bisa disalin sebagai teks dengan 🔗: judul, tanggal dan hadiah, beserta tautan ke tab tempatnya berada —kampanye atau akan datang— karena di Kick sebuah kampanye tidak punya alamat sendiri. Jika data klaim dan tontonanmu tidak pernah sampai —tanpa itu tidak diketahui apa yang kamu punya maupun berapa lama kamu menonton— panel mengatakannya alih-alih diam dengan tanda-tandanya padam. Di mana pun Kick menggambar bilah kemajuan, mengarahkan tetikus akan menyebutkan dengan tepat berapa waktu tonton yang masih kurang, dan mengekliknya membuka detail drop. Tab klaim mendapat kisinya sendiri yang juga menyebutkan berapa lama sejak kamu memperoleh tiap barang, dan menggantikan daftar Kick agar hal yang sama tidak tampil dua kali. Kotak centang menyembunyikan yang sudah selesai dan menyalakan klaim otomatis, baik untuk drop yang sudah tuntas maupun untuk peti hadiah harian yang Kick berikan karena menonton siaran (yang bukan sebuah drop): peti hanya dibuka ketika hadiahnya benar-benar tersedia, dideteksi tanpa bergantung pada bahasa, dan selalu diperiksa setelah drop, tidak pernah di tengahnya. Dan ia juga mengklaim di tab yang berakhir: yang berakhir bersama kampanye adalah kemajuannya, bukan apa yang sudah kamu dapatkan, jadi hadiah yang kamu buka sebelum ditutup tetap diambil dari sana. Dan yang disembunyikannya mencakup hadiah yang sudah kamu klaim, yang Kick tinggalkan di halaman sebagai kotak kosong: yang menentukan sudah diklaim adalah data klaimmu, bukan bentuk halaman. Dan peti itu juga muncul sebagai satu kotak lagi di kisi tersebut, dengan bilah kemajuan Kick: berapa menit menonton yang masih kurang —tetikus di atasnya menyebutkannya, dan mengekliknya membuka jendelanya tanpa mengklaim apa pun—, bahwa ia akan diklaim sendiri begitu selesai, dan —begitu bisa diklaim— sebuah tombol yang mengklaimnya dan membiarkan hasil dari Kick tetap terbuka. Dan hanya milik hari ini: begitu jendela hari itu tutup, kotak itu hilang sampai tantangan baru datang. Menandai dengan 🔔 —di panel dan di kartunya sendiri— kampanye yang berubah sejak terakhir kali kamu melihat, disertai hitungan yang tertunda, notifikasi desktop dan tombol 👁️ yang menganggapnya sudah dilihat dan membawamu ke tab kampanye. Dan runtutan harian bukan lagi satu baris tambahan: panel menggambar pengukur peti —hari beruntun, menit yang sudah ditonton, kapan diatur ulang dan apakah sudah aman— dan tidak bisa ditutup sampai kamu menyelamatkannya; 👁️ hanya membisukan bunyi dan hitungannya, berbunyi sekali sehari dan sekali per jendela, dan dengan kotak dicentang panel tetap di tab itu sampai runtutannya aman. 16 bahasa.",
                 scriptInfoAuthor: "Penulis:", scriptInfoGitHub: "GitHub:",
                 readingApiDrops: "Membaca perubahan drop dari API...",
                 earnedUnclaimed: "didapat, belum diklaim",
@@ -1530,6 +1650,12 @@
                 sortCheapestHint: "Mengurutkan berdasarkan yang paling sedikit dibutuhkan untuk mendapat sesuatu. ⏱ pada kartu adalah hitungan lain: biaya untuk mengambil semuanya.",
                 noInventoryData: "Tanpa inventaris: tidak diketahui apa yang kamu punya atau berapa lama menonton.",
                 dailyStreakReminder: "Hadiah harian: {done} dari {total} menit ditonton. Jangan sampai runtutanmu hilang hari ini.",
+                streakLabel: "Runtutan",
+                streakResetsIn: "diatur ulang dalam {t}",
+                streakSafe: "aman hari ini",
+                streakAtRisk: "berisiko hari ini",
+                streakRead: "Klik untuk membaca runtutanmu: membuka lalu menutup peti Kick, yang membawanya",
+                streakSilence: "Bisukan peringatan. Pengukurnya tetap ada sampai runtutanmu selamat, dan akan berbunyi lagi besok jika belum selesai",
                 urgentClosesIn: "berakhir dalam",
                 urgentNeed: "kurang",
                 urgentNoTime: "waktu tidak cukup",
@@ -1564,6 +1690,11 @@
         const VIEW_FILTERS_KEY = "kick_drops_view_filters";
         const SORT_MODE_KEY = "kick_drops_sort_mode";
         const FOCUS_TARGET_KEY = "kick_drops_focus_target";
+        // La racha leida, con el DIA LOCAL en que se leyo. Se guarda el numero y la
+        // fecha, nada mas: ni el id de la cuenta ni la URL de la que salio. La fecha esta
+        // para saber cuando caduca —la racha cambia como mucho una vez al dia— y asi no
+        // hay que volver a abrir el modal del cofre en cada carga de pagina.
+        const STREAK_KEY = "kick_drops_streak";
 
         // Filtros de vista. El orden es el de la barra: de lo mas general a lo mas
         // concreto.
@@ -3293,7 +3424,12 @@
                     tabNotifs.style.color = alertas > 0 ? colors.orange : colors.gray;
                 }
 
-                if (pending > 0) startNotificationSound();
+                // EL BUCLE ES DE LAS CAMPAÑAS, NO DE LA RACHA. Un aviso que se calla con
+                // un clic puede permitirse repetir cada 5 s; el de la racha ya no se
+                // apaga solo al verlo —el medidor se queda hasta salvarla— asi que un
+                // bucle serian horas de pitidos por algo que solo se arregla viendo
+                // stream. La racha suena UNA vez por episodio (ver _avisarRachaUnaVez).
+                if (_pendientesDeCampaña() > 0) startNotificationSound();
                 else stopNotificationSound();
 
                 // Los dos plazos son los de siempre: rapido para poner la marca —hay que
@@ -3996,6 +4132,337 @@
             return null;
         }
 
+        // =============================================
+        // EL MEDIDOR DE RACHA
+        // =============================================
+        // Lo que el modal del cofre enseña arriba —los galones y el «x1 day»— traido a la
+        // pestaña 🔔 del panel, junto a cuando se reinicia y si la racha de hoy esta a
+        // salvo. Pedido el 2026-09-21: el aviso de la racha ya vive ahi, y el numero que
+        // dice CUANTO llevas encadenado estaba en el unico sitio del que el aviso queria
+        // sacarte.
+        //
+        // Las tres cosas salen de tres fuentes distintas, y conviene no mezclarlas:
+        //   · los DIAS, de `/gamification/users/<id>/streak` (ver _kickStreakDays);
+        //   · el REINICIO, de `window.ends_at` del reto, que es el mismo instante que Kick
+        //     escribe en su modal (verificado el 2026-08-11, ver KICK_CHALLENGES_URL);
+        //   · y A SALVO, del `status` del reto.
+        //
+        // Los CINCO galones son la escala fija de Kick y NO vienen en ninguna respuesta:
+        // son un adorno de su UI. Por eso se pintan como escala —cuantos de cinco— y el
+        // numero de verdad va escrito al lado: con una racha de 9 dias, cinco galones
+        // llenos no significan nueve, significan «lleno».
+        const STREAK_PIPS = 5;
+
+        // A SALVO ES «YA RECLAMADO», y nada mas. Con el tiempo hecho pero sin cobrar la
+        // racha todavia se puede perder —`ends_at` es el plazo de RECLAMO, no el de ver—,
+        // asi que ese estado cuenta como riesgo. Y un `status` que no conozcamos tampoco
+        // se presume a favor: es la direccion en la que equivocarse solo cuesta un aviso
+        // de mas, nunca una racha.
+        function _rachaASalvo(c) {
+            return !!c && c.status === 'claimed';
+        }
+
+        function _rachaGuardada() {
+            let raw = null;
+            try { raw = GM_getValue(STREAK_KEY, null); } catch (e) { return null; }
+            if (!raw) return null;
+            let v = null;
+            try { v = JSON.parse(raw); } catch (e) { return null; }
+            if (!v || !Number.isFinite(Number(v.dias))) return null;
+            // De OTRO dia no sirve: la racha sube al reclamar y se cae al no hacerlo, asi
+            // que un numero de ayer es justo el que enseñaria lo contrario de lo que pasa.
+            if (v.dia !== _diaLocal(Date.now())) return null;
+            return Number(v.dias);
+        }
+
+        function _guardarRacha(dias) {
+            try {
+                GM_setValue(STREAK_KEY, JSON.stringify({ dias, dia: _diaLocal(Date.now()) }));
+            } catch (e) { /* sin guardar, se vuelve a leer la proxima vez */ }
+        }
+
+        // Los dias que se pintan: lo recien interceptado manda sobre lo guardado.
+        function _rachaDias() {
+            if (Number.isFinite(_kickStreakDays)) return _kickStreakDays;
+            return _rachaGuardada();
+        }
+
+        // ABRIR EL MODAL PARA LEER, Y CERRARLO.
+        //
+        // La racha solo viaja cuando la pagina abre el modal del cofre, asi que si no la
+        // has abierto hoy no hay nada que interceptar. La alternativa era componer la URL
+        // nosotros, y eso obliga a conocer tu id de cuenta; se descarto por eso y no por
+        // dificultad (decision del 2026-09-22).
+        //
+        // Es la unica cosa de todo el script que abre una ventana, asi que va con tres
+        // frenos:
+        //   · LO PIDES TU. No lo dispara ningun render ni ningun temporizador: lo dispara
+        //     el clic en la fila del medidor, que para eso lleva cursor y aviso.
+        //   · UNA VEZ AL DIA. El numero se guarda con el dia local, y mientras valga la
+        //     fila ni siquiera es pulsable: no hay nada que volver a leer.
+        //   · DE UNA EN UNA. Mientras haya un intento en marcha, otro clic no hace nada.
+        //     Si el intento falla —no hay cofre, el modal no monta, la peticion no pasa—
+        //     la fila se queda como estaba y se puede volver a pulsar.
+        //
+        // Y no reclama nada: usa `_openDailyRewardModal`, que es el camino que NO pulsa el
+        // primario del dialogo (el que si lo pulsa es `_claimDailyRewardNow`).
+        const STREAK_MODAL_WAIT_MS = 6000;
+        let _rachaPidiendo = false;
+
+        function _pedirRacha() {
+            if (_rachaPidiendo) return;
+            if (_rachaDias() !== null) return;
+            // Sin reto del dia no hay cofre que abrir, y ademas no habria donde enseñarlo.
+            if (!_dailyWatchChallenge()) return;
+            _rachaPidiendo = true;
+            // El dialogo ya abierto cuenta: la pagina habra pedido la racha ella sola.
+            const yaAbierto = !!_getOpenRewardDialog();
+            if (!yaAbierto && !_openDailyRewardModal()) { _rachaPidiendo = false; return; }
+            const desde = Date.now();
+            const espera = setInterval(() => {
+                const llego = Number.isFinite(_kickStreakDays);
+                const vencido = Date.now() - desde > STREAK_MODAL_WAIT_MS;
+                if (!llego && !vencido) return;
+                clearInterval(espera);
+                _rachaPidiendo = false;
+                // Guardar y repintar NO se hace aqui: lo hace `_onStreakReady`, que es
+                // por donde entra tambien la racha que llega cuando abres el cofre tu.
+                // Dos sitios haciendo lo mismo acabarian divergiendo.
+                //
+                // Se cierra lo que hayamos abierto NOSOTROS. Si el modal ya estaba
+                // abierto cuando llegamos, es que lo abriste tu y no se toca.
+                if (!yaAbierto) _closeRewardDialog(_getOpenRewardDialog());
+            }, 200);
+        }
+
+        // La fila del medidor. Devuelve null cuando no hay reto del dia: sin el no hay ni
+        // reinicio que contar ni racha que estar a salvo, y un medidor suelto no dice nada.
+        // =============================================
+        // EL AVISO DE LA RACHA: UNA VEZ POR EPISODIO
+        // =============================================
+        // La racha dejo de tener fila propia (ver renderNotificationsTab) y con ella se
+        // fue la forma de callarla: el medidor se queda en «en riesgo» hasta que la
+        // salves, lo apagues o no. Asi que lo que se puede descartar es el RUIDO —el
+        // pitido y la cuenta— y no el aviso, que es justo lo que se pidio el 2026-09-22.
+        //
+        // Y si el ruido no se puede apagar viendo la fila, el bucle deja de ser
+        // proporcionado: repetir cada 5 s durante la hora que cuesta ganar el cofre es
+        // castigo, no recordatorio. Suena UNA vez por episodio, y un episodio es
+        //     <la ventana del reto> + <el dia de tu calendario>
+        // que son exactamente los dos instantes en que la racha vuelve a estar en juego:
+        // a las 18:00 en UTC−6 se abre la ventana nueva, y a medianoche local amanece con
+        // el reto de ayer todavia sin hacer (ver `_diaLocal` y la segunda alarma de
+        // _syncDailyNotification, que reabre la marca de visto por lo mismo).
+        //
+        // LA MARCA SE GUARDA, y eso NO es un detalle: el script recarga la pagina sola
+        // cada 15 minutos (ver el `setInterval` del final). Con la marca solo en memoria,
+        // «una vez por episodio» se habria convertido en un pitido cada cuarto de hora —el
+        // bucle otra vez, mas lento y mas dificil de relacionar con su causa—. Lo unico
+        // que se guarda es esa marca: la clave de la ventana y el dia local, ni un dato
+        // mas.
+        const STREAK_BEEP_KEY = "kick_drops_streak_beep";
+
+        // Y EL FOCO VA POR SU CUENTA, con su propia marca y EN MEMORIA. Son dos reglas
+        // distintas y mezclarlas se notaria en los dos sentidos:
+        //   · el sonido no puede repetirse al recargar, porque es intrusivo;
+        //   · el foco SI tiene que volver a ponerse en cada carga mientras la racha siga
+        //     sin salvarse, silenciada o no, porque eso es lo que se pidio: que el panel
+        //     se plante ahi hasta que la salves. Lo que no hace es robar la solapa en
+        //     cada repintado —ahi las otras tres dejarian de poder usarse—, y por eso la
+        //     marca existe: una vez por carga y otra cuando la racha vuelve a estar en
+        //     juego (el relevo de las 18:00 con la pestaña abierta).
+        let _rachaEnfocada = '';
+
+        // Las alertas de CAMPAÑA, que son las que mantienen el bucle. La de la racha se
+        // cuenta para la solapa y para el titulo, pero no para el sonido.
+        function _pendientesDeCampaña() {
+            return getNotifications().filter(n => !n.seen && n.changed && n.kind !== 'daily').length;
+        }
+
+        // La alerta del dia si esta pendiente; null si no hay o ya la silenciaste.
+        function _alertaDiariaPendiente() {
+            return getNotifications().find(n =>
+                n && n.kind === 'daily' && !n.seen && n.changed) || null;
+        }
+
+        function _avisarRachaUnaVez() {
+            // EN RIESGO NO ES LO MISMO QUE SONANDO. `_dailyReminderState()` dice si la
+            // racha sigue en juego —silenciada o no—, y es eso lo que manda el foco; el
+            // sonido lo manda la alerta sin silenciar. Confundirlos dejaba de plantar el
+            // panel en cuanto pulsabas el 👁️, que es justo lo contrario de «el aviso
+            // sigue activo hasta que se salve».
+            const enRiesgo = _dailyReminderState();
+            if (!enRiesgo) return;
+            const marca = DAILY_NOTIF_PREFIX + enRiesgo.windowKey + '|' + _diaLocal(Date.now());
+
+            // La marca se apunta SOLO si el foco llego a ocurrir. Consumiendola a ciegas,
+            // poner la casilla a media sesion no habria plantado nada hasta el episodio
+            // siguiente: el intento fallido se habria contado como hecho.
+            if (_rachaEnfocada !== marca && _enfocarSolapaDeAlertas()) _rachaEnfocada = marca;
+
+            if (!_alertaDiariaPendiente()) return;
+            let ya = '';
+            try { ya = GM_getValue(STREAK_BEEP_KEY, '') || ''; } catch (e) { /* sin marca, suena */ }
+            if (ya === marca) return;
+            try { GM_setValue(STREAK_BEEP_KEY, marca); } catch (e) { /* sonara otra vez */ }
+            playBeep();
+        }
+
+        // LA SOLAPA 🔔 SE PONE DELANTE, y solo aqui: al cargar y cuando la racha vuelve a
+        // estar en juego. NO en cada repintado —eso dejaria las otras tres solapas sin
+        // poder usarse, porque cualquier dato que llegara te devolveria aqui— y no sin la
+        // casilla de cerrados/completados puesta.
+        //
+        // Esa casilla es la que decide, y no es arbitrario: con ella el script ya te cobra
+        // el cofre solo, asi que lo unico que queda en tus manos es ver los 60 minutos, y
+        // es lo unico por lo que tiene sentido plantarse. Sin ella no gestiona tu cofre y
+        // no le toca insistir.
+        // Devuelve si de verdad enfoco algo, que es lo que su llamador necesita saber
+        // para no dar por hecho un intento que no se hizo.
+        function _enfocarSolapaDeAlertas() {
+            if (!cleanExpiredInventoryFlag) return false;
+            const tabNotifs = document.getElementById("kick-drops-tab-notifs");
+            const notifsPane = document.getElementById("kick-drops-notifs-pane");
+            if (!tabNotifs || !notifsPane) return false;
+            const solapas = ["kick-drops-tab-active", "kick-drops-tab-upcoming",
+                "kick-drops-tab-expired"];
+            const panes = ["kick-drops-active-pane", "kick-drops-upcoming-pane",
+                "kick-drops-expired-pane"];
+            for (const id of solapas) {
+                const b = document.getElementById(id);
+                if (!b) continue;
+                b.style.borderBottom = '2px solid transparent';
+                b.style.color = colors.gray;
+            }
+            for (const id of panes) {
+                const p = document.getElementById(id);
+                if (p) p.style.display = 'none';
+            }
+            tabNotifs.style.borderBottom = `2px solid ${colors.primary}`;
+            tabNotifs.style.color = colors.primaryLight;
+            notifsPane.style.display = 'block';
+            return true;
+        }
+
+        function _streakMeterRow() {
+            const c = _dailyWatchChallenge();
+            if (!c) return null;
+            const dias = _rachaDias();
+            const aSalvo = _rachaASalvo(c);
+            const fin = Date.parse((c.window && c.window.ends_at) || '');
+
+            const row = document.createElement('div');
+            // Para los tests: la fila se señala por lo que ES y no por su prosa, que va
+            // en 16 idiomas y cambia con las horas que queden.
+            row.setAttribute('data-streak-meter', '1');
+            Object.assign(row.style, {
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '6px 8px', marginBottom: '8px',
+                backgroundColor: colors.bg, borderRadius: '6px',
+                border: `1px solid ${aSalvo ? colors.green : colors.border}`
+            });
+
+            const pips = document.createElement('span');
+            pips.setAttribute('data-streak-pips', '1');
+            // Sin numero no se pinta ninguno lleno: un medidor a cero se leeria como una
+            // racha perdida, que es una afirmacion, y aqui lo cierto es que no se sabe.
+            const llenos = dias === null ? 0 : Math.min(STREAK_PIPS, dias);
+            pips.textContent = '❯'.repeat(llenos);
+            pips.style.letterSpacing = '1px';
+            pips.style.color = colors.green;
+            const vacios = document.createElement('span');
+            vacios.textContent = '❯'.repeat(STREAK_PIPS - llenos);
+            vacios.style.letterSpacing = '1px';
+            vacios.style.color = colors.border;
+
+            const galones = document.createElement('span');
+            galones.style.flexShrink = '0';
+            galones.appendChild(pips);
+            galones.appendChild(vacios);
+            row.appendChild(galones);
+
+            const texto = document.createElement('div');
+            texto.style.flex = '1';
+            texto.style.fontSize = '11px';
+            texto.style.color = colors.gray;
+            const partes = [];
+            // El numero va SIEMPRE que se sepa, porque los cinco galones son una escala y
+            // no una cuenta: con 9 dias encadenados el medidor se ve igual que con 5.
+            partes.push((t.streakLabel || i18n.en.streakLabel) +
+                (dias === null ? '' : ' x' + dias));
+            // LOS MINUTOS VISTOS, que es lo unico que decia la fila y el medidor no. Al
+            // quitar la fila habrian desaparecido, y son el dato accionable: dicen cuanto
+            // te queda de stream para salvar el dia. Va en crudo —«14/60 min»— y no con la
+            // frase de `dailyStreakReminder`, que es una oracion entera y aqui convive con
+            // otras tres cosas en la misma linea.
+            //
+            // Solo cuando la racha esta en juego: `_dailyReminderState()` contesta null en
+            // cuanto el reto esta hecho o cobrado, y entonces un «60/60» no añadiria nada
+            // que no diga ya «a salvo hoy».
+            const enJuego = _dailyReminderState();
+            if (enJuego) partes.push(`${enJuego.done}/${enJuego.total} min`);
+            if (Number.isFinite(fin) && fin > Date.now()) {
+                partes.push((t.streakResetsIn || i18n.en.streakResetsIn)
+                    .replace('{t}', _formatCountdown((fin - Date.now()) / 60000)));
+            }
+            partes.push(aSalvo
+                ? (t.streakSafe || i18n.en.streakSafe)
+                : (t.streakAtRisk || i18n.en.streakAtRisk));
+            texto.textContent = partes.join(' · ');
+            if (aSalvo) texto.style.color = colors.green;
+            row.appendChild(texto);
+
+            // EL 👁️ CALLA EL RUIDO, NO EL AVISO. Sale solo mientras la alerta del dia
+            // sigue sonando; pulsarlo le quita el pitido y la cuenta de la solapa y del
+            // titulo, y el medidor se queda exactamente igual, en «en riesgo», hasta que
+            // la racha este a salvo de verdad (decidido el 2026-09-22).
+            //
+            // Y no calla para siempre: al abrirse la ventana nueva o al amanecer otro dia
+            // de calendario, la marca de visto caduca y vuelve a sonar una vez (ver la
+            // segunda alarma en _syncDailyNotification y _avisarRachaUnaVez). Callarlo
+            // por la noche y perder la racha al dia siguiente es justo lo que se reporto
+            // el 2026-09-21.
+            if (_alertaDiariaPendiente()) {
+                const callar = document.createElement('button');
+                callar.setAttribute('data-streak-silence', '1');
+                callar.textContent = t.viewIcon || '👁️';
+                callar.title = t.streakSilence || i18n.en.streakSilence;
+                Object.assign(callar.style, {
+                    backgroundColor: colors.surface, border: `1px solid ${colors.primary}`,
+                    color: colors.text, padding: '2px 6px', borderRadius: '4px',
+                    cursor: 'pointer', fontSize: '11px', flexShrink: '0'
+                });
+                callar.onclick = (ev) => {
+                    // La fila entera puede ser un boton (ver abajo): sin esto, callar el
+                    // aviso abriria ademas el cofre.
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    const alerta = _alertaDiariaPendiente();
+                    if (alerta) markNotificationSeen(alerta.key);
+                    renderNotificationsTab();
+                };
+                row.appendChild(callar);
+            }
+
+            // SIN NUMERO, LA FILA ES UN BOTON. La racha solo viaja cuando la pagina abre
+            // el modal del cofre, asi que si hoy no lo has abierto no hay nada que
+            // interceptar y hay que provocarlo. Eso ABRE ALGO, o sea que lo pides tu: la
+            // fila lo dice con el cursor y con su aviso, y una vez leido se guarda con el
+            // dia y no vuelve a hacer falta hasta mañana.
+            if (dias === null) {
+                row.setAttribute('data-streak-ask', '1');
+                row.style.cursor = 'pointer';
+                row.title = t.streakRead || i18n.en.streakRead;
+                const pedir = document.createElement('span');
+                pedir.textContent = '↻';
+                pedir.style.color = colors.primary;
+                pedir.style.flexShrink = '0';
+                row.appendChild(pedir);
+                row.onclick = () => { _pedirRacha(); };
+            }
+            return row;
+        }
+
         // Que hacer con el reto de hoy. Los tres estados de Kick estan verificados
         // (2026-08-11, siguiendo un reto de principio a fin):
         //
@@ -4051,6 +4518,25 @@
         // seria pedirte un clic por algo que ya no puedes perder.
         const DAILY_NOTIF_PREFIX = 'kick-daily|';
 
+        // EL DIA DEL RELOJ DE TU MAQUINA, que NO es el dia del reto.
+        //
+        // La ventana de Kick va de medianoche UTC a medianoche UTC, asi que en UTC−6
+        // ruedа a las 18:00 de la tarde. Los dos «dias» se solapan seis horas, y en esas
+        // seis horas caben dos cosas que parecen la misma y no lo son: marcar el aviso
+        // visto «esta noche» silencia la ventana que muere MAÑANA A LAS 18:00.
+        //
+        // Reportado el 2026-09-21: «ayer la marque como visto y no lo vi, y hoy se me
+        // olvido». Es exactamente eso. El aviso hizo lo que se le pidio —callarse— y la
+        // racha se perdio igual, porque entre el clic y el cierre de la ventana pasaba un
+        // dia entero de calendario sin que nadie volviera a decir nada.
+        //
+        // Se compara en el huso de tu maquina y no en UTC a proposito: lo que se quiere
+        // reproducir es «amaneci y sigue sin estar hecho», y amanecer es local.
+        function _diaLocal(ms) {
+            const d = new Date(ms);
+            return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+        }
+
         function _syncDailyNotification() {
             // SIN DATOS NO SE DECIDE NADA. `_dailyReminderState()` devuelve null tanto
             // porque el reto ya esta hecho como porque `/challenges` todavia no ha
@@ -4088,12 +4574,42 @@
                         createdAt: Date.now(), updatedAt: Date.now()
                     });
                     cambio = true;
-                } else if (ya.title !== texto) {
-                    // Los minutos suben mientras ves, asi que el texto se refresca. NO se
-                    // vuelve a poner `seen: false`: refrescar una cifra no es una alerta
-                    // nueva, y hacerlo la volveria a encender cada minuto visto.
-                    ya.title = texto;
-                    cambio = true;
+                } else {
+                    if (ya.title !== texto) {
+                        // Los minutos suben mientras ves, asi que el texto se refresca. NO
+                        // se vuelve a poner `seen: false` por esto: refrescar una cifra no
+                        // es una alerta nueva, y hacerlo la volveria a encender cada minuto
+                        // visto.
+                        ya.title = texto;
+                        cambio = true;
+                    }
+                    // LA SEGUNDA ALARMA: un dia nuevo del CALENDARIO vuelve a encenderla.
+                    //
+                    // La marca de «visto» dice «ya me he enterado», y eso caduca: si ha
+                    // amanecido otra vez y el reto sigue sin hacerse, no te has enterado de
+                    // lo de hoy, te enteraste de lo de ayer. Sin esto, el unico despertador
+                    // era el cambio de VENTANA —que en UTC−6 llega a las 18:00— y para
+                    // entonces la racha ya se perdio (ver `_diaLocal`).
+                    //
+                    // Suena UNA vez por dia de calendario como mucho: se apunta el dia en
+                    // que se marco vista y solo se reabre cuando ese dia ya no es hoy. Y
+                    // solo mientras el reto siga pendiente, porque esta rama entera vive
+                    // dentro de `if (state)`: completado o cobrado, no hay nada que decir.
+                    if (ya.seen) {
+                        const hoy = _diaLocal(Date.now());
+                        // `updatedAt` es el instante en que se marco vista (es lo que
+                        // escribe markNotificationSeen, y el refresco del texto de arriba no
+                        // lo toca). Se apunta el dia la primera vez que se ve marcada, para
+                        // que las alertas que ya estaban guardadas antes de esto entren sin
+                        // dispararse de golpe.
+                        if (!ya.seenDay) ya.seenDay = _diaLocal(Number(ya.updatedAt) || Date.now());
+                        if (ya.seenDay !== hoy) {
+                            ya.seen = false;
+                            ya.seenDay = '';
+                            ya.updatedAt = Date.now();
+                            cambio = true;
+                        }
+                    }
                 }
             }
 
@@ -4111,6 +4627,7 @@
             // ese viene a null tambien cuando lo silenciaste con la ×, y entonces el dia
             // siguiente se quedaria sin despertador.
             _scheduleWindowRollover(_dailyWatchChallenge());
+            _scheduleMedianocheLocal();
             _syncDailyNotification();
             renderNotificationsTab();
             // La tarjeta del cofre vive en la rejilla de reclamados, asi que el mismo dato
@@ -4134,6 +4651,34 @@
         // segundo puede contestar todavia con el reto viejo. Si aun asi llega cerrado se
         // reintenta, espaciado y contado —hasta 5 veces—: sin tope, un servidor que no
         // rotara nos dejaria pidiendolo cada minuto para siempre.
+        // EL DESPERTADOR DE MEDIANOCHE, que es la pareja del relevo de ventana.
+        //
+        // La re-alerta del dia nuevo (ver `_syncDailyNotification`) se decide al repintar,
+        // y en una pestaña que lleva abierta desde ayer no repinta nadie: el unico
+        // temporizador que habia se despierta al CERRAR la ventana del reto, o sea a las
+        // 18:00 en UTC−6, que es justo lo tarde que este arreglo viene a evitar. Con este,
+        // el aviso vuelve solo en cuanto cambia el dia del calendario.
+        //
+        // Va con UN temporizador puesto al instante exacto, no sondeando: la medianoche se
+        // sabe, y preguntar cada pocos minutos solo seria ruido para acertar lo que ya
+        // sabemos. Se rearma en cada `_updateDailyReminder`, que es lo que corre despues.
+        //
+        // Los 5 s de margen son para no caer justo en el filo del cambio de dia y que
+        // `_diaLocal` siga devolviendo el de ayer por un puñado de milisegundos.
+        const MEDIANOCHE_MARGEN_MS = 5000;
+        let _medianocheTimer = null;
+
+        function _scheduleMedianocheLocal() {
+            if (_medianocheTimer) { clearTimeout(_medianocheTimer); _medianocheTimer = null; }
+            const ahora = new Date();
+            const manana = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 1);
+            const espera = (manana.getTime() - ahora.getTime()) + MEDIANOCHE_MARGEN_MS;
+            _medianocheTimer = setTimeout(() => {
+                _medianocheTimer = null;
+                _updateDailyReminder();
+            }, espera);
+        }
+
         const ROLLOVER_MARGEN_MS = 5000;
         const ROLLOVER_REINTENTO_MS = 60000;
         const ROLLOVER_MAX_REINTENTOS = 5;
@@ -4770,6 +5315,16 @@
             // Si el interceptor ya lo tenia, se pinta ahora; si llega despues, entra por
             // el callback. Las dos vias acaban en la misma funcion.
             _onChallengesReady = _updateDailyReminder;
+
+            // La racha, venga de donde venga. Son DOS caminos y los dos acaban aqui: el
+            // nuestro —pulsar la fila del medidor, que abre y cierra el cofre— y el tuyo,
+            // abrir el cofre a mano. Sin este enganche el segundo se veria en la sesion y
+            // no se guardaria, asi que mañana volveriamos a abrir el modal teniendo el
+            // dato leido hoy.
+            _onStreakReady = () => {
+                _guardarRacha(_kickStreakDays);
+                renderNotificationsTab();
+            };
             _ensureChallenges();
 
             body.appendChild(tabContent);
@@ -4790,8 +5345,18 @@
             tabExpired.onclick = () => { activateTab(tabExpired, colors.red, colors.red); expiredPane.style.display = "block"; };
             tabNotifs.onclick = () => { activateTab(tabNotifs); notifsPane.style.display = "block"; };
 
-            // Check if there are pending notifications to show that tab by default
-            const pendingNotifs = getNotifications().filter(n => !n.seen && n.changed);
+            // QUE SOLAPA SALE DELANTE AL ABRIR. Solo la deciden los avisos de CAMPAÑA,
+            // como hasta ahora. La racha no entra aqui aunque cuente como aviso pendiente:
+            // su foco lo decide `_avisarRachaUnaVez`, que sabe dos cosas que este punto no
+            // puede saber —si la casilla de cerrados/completados esta puesta, y si la racha
+            // sigue en riesgo—, y ademas llega cuando `/challenges` ya ha contestado, que
+            // al construir el panel casi nunca es el caso.
+            //
+            // Dejarla aqui tambien la habria enfocado sin la casilla y habria dejado de
+            // hacerlo al silenciarla, que son las dos cosas que el 2026-09-22 se pidieron
+            // al reves.
+            const pendingNotifs = getNotifications().filter(n =>
+                !n.seen && n.changed && n.kind !== 'daily');
             if (pendingNotifs.length > 0) {
                 activateTab(tabNotifs);
                 notifsPane.style.display = "block";
@@ -5662,10 +6227,18 @@
             notifsPane.innerHTML = "";
 
             const notifs = getNotifications();
-            const pending = notifs.filter(n => !n.seen && n.changed);
-            // La racha del dia ya viene DENTRO de `pending`: es una notificacion mas (ver
-            // _syncDailyNotification). La cuenta sale de _alertCount para que la solapa
-            // diga lo mismo desde los dos sitios que la escriben.
+            // LA RACHA YA NO ES UNA FILA. Sigue siendo una notificacion del mismo almacen
+            // —de ahi salen la cuenta de la solapa, la del titulo y su «visto»— pero lo que
+            // se PINTA es el medidor, que dice lo mismo y ademas dice cuanto llevas
+            // encadenado y cuando se reinicia. Dos maneras de contar lo mismo, una encima
+            // de la otra, era la peor de las dos.
+            //
+            // Y el medidor NO se puede descartar: se queda en «en riesgo» hasta que la
+            // racha este a salvo (decidido el 2026-09-22). Lo que si se descarta es el
+            // ruido —el pitido y la cuenta—, con el 👁️ que lleva el propio medidor.
+            const pending = notifs.filter(n => !n.seen && n.changed && n.kind !== 'daily');
+            // La cuenta SI la incluye, y sale de _alertCount para que la solapa diga lo
+            // mismo desde los dos sitios que la escriben.
             const alertas = _alertCount();
 
             // Update tab label with count
@@ -5677,7 +6250,24 @@
                 }
             }
 
-            if (alertas === 0) {
+            // EL MEDIDOR VA ANTES DEL CORTE, y eso es deliberado: cuando la racha esta
+            // a salvo NO hay aviso pendiente —el aviso es justo lo que se apaga al
+            // reclamar— asi que puesto debajo del corte no se veria nunca en el unico
+            // estado en el que dice algo bueno.
+            //
+            // Aqui NO se pide el dato. Pedirlo abre el modal del cofre, y este render
+            // corre solo al cargar y cada vez que cambia cualquier notificacion: una
+            // pagina que abre y cierra ventanas por su cuenta no es lo que se pidio. Lo
+            // dispara un clic tuyo sobre la propia fila (ver _pedirRacha).
+            const medidor = _streakMeterRow();
+            if (medidor) notifsPane.appendChild(medidor);
+
+            // El corte va por las FILAS y no por la cuenta: con la racha pendiente pero
+            // sin ninguna campaña que avisar, `alertas` vale 1 y filas hay cero, asi que
+            // por la cuenta se pintaba la cabecera de «marcar todas» sobre una lista
+            // vacia. Lo que se dice aqui es que no hay campañas nuevas, y eso es cierto
+            // tenga o no la racha pendiente: el medidor ya esta pintado arriba.
+            if (pending.length === 0) {
                 const emptyMsg = document.createElement("div");
                 emptyMsg.textContent = "\u2713 " + (t.noResults || "No notifications");
                 emptyMsg.style.color = colors.gray;
@@ -5686,6 +6276,7 @@
                 emptyMsg.style.padding = "12px 0";
                 notifsPane.appendChild(emptyMsg);
                 updateNotificationTitleAndSound();
+                _avisarRachaUnaVez();
                 return;
             }
 
@@ -5838,6 +6429,8 @@
                     notifsPane.style.display = "block";
                 }
             }
+
+            _avisarRachaUnaVez();
         }
 
         // =============================================

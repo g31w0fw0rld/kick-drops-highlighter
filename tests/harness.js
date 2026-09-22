@@ -684,45 +684,93 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             // Se busca por `data-notif-kind="daily"` y no por su texto: el texto va
             // traducido a 16 idiomas y ademas cambia con los minutos vistos, asi que
             // apuntarlo seria apuntar a la prosa en vez de a la fila.
+            // EL AVISO DEL RETO DEL DIA. Desde el 2026-09-22 ya NO es una fila del
+            // almacen: la fila se fue y lo que se pinta es el medidor de racha, que dice
+            // lo mismo y ademas los dias encadenados y cuando se reinicia.
+            //
+            // Por eso «existe» y «suena» dejaron de ser la misma cosa, y hay que mirarlas
+            // por separado:
+            //   existe  el medidor esta ahi. Lo esta siempre que haya reto del dia,
+            //           tambien con la racha ya a salvo —es el unico estado en el que dice
+            //           algo bueno—.
+            //   visible el aviso sigue ACTIVO, o sea sin silenciar. Se reconoce por el 👁️
+            //           que solo sale mientras suena; pulsarlo calla el pitido y la
+            //           cuenta, y deja el medidor exactamente igual.
+            // Se señalan por sus `data-` y no por su prosa: el texto va en 16 idiomas y
+            // cambia con los minutos vistos y con las horas que queden.
             const racha = (() => {
-                const el = d.querySelector('#kick-drops-notifs-pane [data-notif-kind="daily"]');
+                const el = d.querySelector('#kick-drops-notifs-pane [data-streak-meter]');
                 if (!el) return { existe: false, visible: false, enAlertas: false, texto: null };
+                const callar = el.querySelector('[data-streak-silence]');
                 return {
                     existe: true,
-                    // Existir y verse son ya lo mismo: la fila solo se pinta mientras el
-                    // aviso esta pendiente, y desaparece al marcarla vista.
-                    visible: true,
+                    visible: !!callar,
                     enAlertas: true,
-                    texto: (el.firstChild && el.firstChild.textContent) || null,
-                    // Pulsa el 👁️ y devuelve como quedo todo. Sustituye a `cerrar()`: la
-                    // × ya no existe, y lo que da por visto el aviso es el mismo boton que
-                    // el de cualquier otra alerta.
-                    //
-                    // Espera antes de mirar porque la limpieza del titulo va con 1 s de
-                    // retraso a proposito (para no borrar un titulo que la SPA acabe de
-                    // cambiar): leyendolo al instante saldria siempre con la marca puesta.
+                    texto: (el.textContent || '').trim(),
+                    // Pulsa el 👁️ y devuelve como quedo todo. Lo que tiene que cambiar es
+                    // el RUIDO —titulo y solapa— y lo que NO tiene que cambiar es el
+                    // medidor: sigue ahi y sigue diciendo que la racha esta en riesgo.
                     marcarVista: () => new Promise(res => {
-                        const ojo = el.querySelector('button');
-                        if (ojo) ojo.click();
-                        setTimeout(() => res({
-                            visible: !!d.querySelector('#kick-drops-notifs-pane [data-notif-kind="daily"]'),
-                            titulo: w.document.title,
-                            solapa: tabLabel('notifs'),
-                            // Las alertas guardadas, para poder comprobar que la del dia
-                            // quedo marcada vista y no borrada: borrarla la haria nacer
-                            // otra vez en la vuelta siguiente.
-                            guardado: (() => {
-                                try { return JSON.parse(store.get('kick_drop_notifications') || '[]'); }
-                                catch (e) { return []; }
-                            })()
-                        }), 1300);
+                        if (callar) callar.click();
+                        setTimeout(() => {
+                            const tras = d.querySelector('#kick-drops-notifs-pane [data-streak-meter]');
+                            res({
+                                visible: !!(tras && tras.querySelector('[data-streak-silence]')),
+                                medidorSigue: !!tras,
+                                texto: tras ? (tras.textContent || '').trim() : null,
+                                titulo: w.document.title,
+                                solapa: tabLabel('notifs'),
+                                guardado: (() => {
+                                    try { return JSON.parse(store.get('kick_drop_notifications') || '[]'); }
+                                    catch (e) { return []; }
+                                })()
+                            });
+                        }, 1300);
                     })
                 };
+            })();
+
+            // EL MEDIDOR DE RACHA, que es otra cosa que el aviso de mas arriba y por eso
+            // se mira aparte: el aviso solo existe mientras el reto esta PENDIENTE, y el
+            // medidor se pinta igual cuando ya esta a salvo —que es justo cuando dice
+            // algo bueno—. Se busca por `data-streak-meter` por el mismo motivo que el
+            // aviso por su `kind`: su texto va en 16 idiomas y cambia con las horas que
+            // queden, asi que apuntarlo seria apuntar a la prosa.
+            const medidor = (() => {
+                const el = d.querySelector('#kick-drops-notifs-pane [data-streak-meter]');
+                if (!el) return { existe: false, texto: null, galones: null, pide: false };
+                const pips = el.querySelector('[data-streak-pips]');
+                return {
+                    existe: true,
+                    texto: (el.textContent || '').trim(),
+                    // Cuantos galones salen LLENOS. El numero tambien va en el texto, pero
+                    // alli esta pegado a la prosa traducida; esto es la escala en crudo.
+                    galones: pips ? pips.textContent.length : null,
+                    // Si la fila se ofrece a leer la racha, que es como se ve que NO la
+                    // tiene: sin numero, la fila es un boton (ver _streakMeterRow).
+                    pide: el.getAttribute('data-streak-ask') === '1'
+                };
+            })();
+
+            // QUE SOLAPA ESTA DELANTE. Es lo unico que dice si el panel se planto en 🔔,
+            // que desde el 2026-09-22 depende de la casilla de cerrados/completados: la
+            // racha solo la abre con esa casilla puesta. Sin esto, «se enfoca» y «no se
+            // enfoca» se ven igual desde fuera.
+            const solapaDelante = (() => {
+                const panes = { active: 'kick-drops-active-pane', upcoming: 'kick-drops-upcoming-pane',
+                    expired: 'kick-drops-expired-pane', notifs: 'kick-drops-notifs-pane' };
+                for (const [nombre, id] of Object.entries(panes)) {
+                    const el = d.getElementById(id);
+                    if (el && el.style.display !== 'none') return nombre;
+                }
+                return null;
             })();
 
             const informe = {
                 logs,
                 snaps,
+                medidor,
+                solapaDelante,
                 // Para diagnosticar los ganchos que pulsan cosas: que botones hay de
                 // verdad en el panel y que campos de texto quedaron abiertos.
                 botonesPanel: Array.from(d.querySelectorAll('#kick-drops-panel button'))
