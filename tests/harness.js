@@ -107,7 +107,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, dejarAbierta = false }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -541,6 +541,16 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             const c = w.document.getElementById('kick-daily-chest-card');
             if (c) c.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
         }, clickTarjetaCofre.at || 10000);
+    }
+
+    // Pulsa el MEDIDOR DE RACHA de la pestaña 🔔 —la fila entera, no su 👁️—. Con el
+    // numero de dias ya sabido tiene que abrir el modal del cofre igual que la baldosa;
+    // sin el, lo abre para leer la racha y lo cierra (ver `_pedirRacha`).
+    if (clickMedidor) {
+        setTimeout(() => {
+            const m = w.document.querySelector('[data-streak-meter]');
+            if (m) m.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        }, clickMedidor.at || 10000);
     }
 
     // Marca (o desmarca) una casilla del panel a mitad de sesion, como haria el usuario.

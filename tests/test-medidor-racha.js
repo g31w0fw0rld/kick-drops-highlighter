@@ -194,6 +194,31 @@ const mirar = (opts) => run(Object.assign({
         .map(r => r.medidor.texto || '').filter(x => /\{t\}|undefined/.test(x));
     comprobar(sospechoso.length === 0, 'ningun texto deja un marcador sin sustituir', sospechoso);
 
+    // 11. CON NUMERO, EL MEDIDOR ABRE EL MODAL DEL COFRE, como su baldosa del inventario
+    //     (pedido el 2026-09-23). Y SIN RECLAMAR: se mira lo que NO se pulsa, porque un
+    //     clic que cobrara tambien abriria el modal y pasaria por bueno. Va en escritorio
+    //     y en movil, donde el cofre solo existe dentro del menu de la cuenta.
+    for (const [modo, cofre] of [['escritorio', 'cuenta'], ['movil', 'movil-cerrado']]) {
+        const pulsado = await mirar({
+            challenges: [reto(0, 60, 'in_progress')],
+            seed: { kick_drops_streak: guardada(3) },
+            cofre, clickMedidor: { at: 20000 }, waitMs: 30000
+        });
+        comprobar(pulsado.dialogoAbierto,
+            `(${modo}) pulsar el medidor con la racha sabida abre el modal del cofre`,
+            pulsado.botonesPulsados);
+        comprobar(!(pulsado.botonesPulsados || []).some(b => /claim daily reward/i.test(String(b || ''))),
+            `(${modo}) y no reclama nada`, pulsado.botonesPulsados);
+    }
+    // CONTROL: sin pulsarlo no se abre nada. Sin esto, un modal que abriera otra cosa
+    // del script (el reclamo automatico, el pedido de la racha) daria el mismo verde.
+    const sinPulsar = await mirar({
+        challenges: [reto(0, 60, 'in_progress')],
+        seed: { kick_drops_streak: guardada(3) },
+        cofre: 'cuenta', waitMs: 30000
+    });
+    comprobar(!sinPulsar.dialogoAbierto, 'CONTROL: sin pulsar el medidor no se abre ningun modal');
+
     console.log(fallos ? `\n  ${fallos} FALLAN` : '\n  todo en verde');
     process.exit(fallos ? 1 : 0);
 })();
