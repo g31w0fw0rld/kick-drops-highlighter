@@ -10,13 +10,11 @@
 // Lo visto son 418 min en toda la campaña (0.69666666 × 600, 0.46444446 × 900…), y con eso
 // cuadran los seis textos del volcado.
 //
-// PENDIENTE, sin comprobar aqui a proposito: sin API, el modal del ticket de 10 h dice
-// «422 / 605 min» y el tramo es de 600. Kick escribe lo que falta redondeado HACIA ARRIBA
-// —0.69666666 × 600 = 417.999996, faltan 182.000004, y escribe «3 h y 3 min»—, y
-// `_resolveKickProgress` divide ese minuto de mas por (1 − f) = 0.30: salen 603.3, que el
-// redondeo a multiplos de 5 manda a 605. El error crece con la barra, y a partir de ~60 %
-// un solo minuto ya se sale del margen del redondeo. Arreglarlo es tocar el script (bump
-// propio); cuando se haga, el caso C de abajo pasa a exigir «418 / 600 min».
+// El caso C es el que destapo el fallo de la 1.3.21: sin API, el modal del ticket de 10 h
+// decia «422 / 605 min» y el tramo es de 600. Kick escribe lo que falta redondeado HACIA
+// ARRIBA —0.69666666 × 600 = 417.999996, faltan 182.000004, y escribe «3 h y 3 min»—, y
+// dividir ese minuto de mas por (1 − f) = 0.30 daba 603.3, que el redondeo a multiplos de
+// 5 mandaba a 605. Contra la 1.3.21 este test falla justo ahi; ver `_kickTierFromBar`.
 const { run, readFixture } = require('./harness');
 
 const pane = readFixture('fixture-campaigns-partial-claimed.html');
@@ -125,7 +123,7 @@ const busca = (r, n) => (r.recompensas || []).find(x => x.nombre === n);
         ...base,
         apiCampaigns: null, progress: null,
         hover: { sels: EN_CURSO.map(li), at: 11000 },
-        clickDrop: { sel: li(15), at: 11000 + EN_CURSO.length * 800 + 500 },
+        clickDrop: { sel: li(10), at: 11000 + EN_CURSO.length * 800 + 500 },
         waitMs: 17000 + EN_CURSO.length * 800
     });
 
@@ -139,11 +137,15 @@ const busca = (r, n) => (r.recompensas || []).find(x => x.nombre === n);
         else if (t.texto !== debe) fallos.push(`sin API, "${nombre(h)}": "${t.texto}" (se esperaba "${debe}")`);
     });
 
-    // El de 15 h, y no el de 10 h: ver el PENDIENTE de la cabecera.
+    // El de 10 h, que es el que tiene la barra mas alta (70 %) y el unico en el que el
+    // minuto de mas del texto de Kick se salia del redondeo. Lo visto sale 417 y no 418 a
+    // proposito: es el tramo menos lo que Kick dice que falta (600 − 183), para que el
+    // modal diga el mismo «3h 3m» que la baldosa de Kick (ver `_resolveKickProgress`).
     if (!c.modal.abierto) {
-        fallos.push('sin API: pulsar el ticket de 15 h no abrio el modal' + (c.modal.error ? ` (${c.modal.error})` : ''));
-    } else if (!(c.modal.texto || '').includes('418 / 900 min')) {
-        fallos.push(`sin API, el modal del ticket de 15 h no dice «418 / 900 min»: ${c.modal.texto}`);
+        fallos.push('sin API: pulsar el ticket de 10 h no abrio el modal' + (c.modal.error ? ` (${c.modal.error})` : ''));
+    } else if (!(c.modal.texto || '').includes('417 / 600 min') || !(c.modal.texto || '').includes('Tiempo restante: 3h 3m')) {
+        fallos.push(`sin API, el modal del ticket de 10 h no dice «417 / 600 min» y «3h 3m»: ${c.modal.texto}` +
+            ' («422 / 605» es dividir el texto redondeado de Kick por 1 − f)');
     }
 
     if (fallos.length) {

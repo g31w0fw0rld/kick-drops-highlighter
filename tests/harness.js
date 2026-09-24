@@ -581,8 +581,10 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             if (!el) { modal.error = 'no existe: ' + clickDrop.sel; return; }
             el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
             setTimeout(() => {
+                // `z` porque no todos los modales van a la misma altura: el del drop va a
+                // 999999 y los de createModalContainer —la ficha del ℹ️— a 99999.
                 const ov = Array.from(w.document.body.children).find(nodo =>
-                    nodo.tagName === 'DIV' && !nodo.id && nodo.style && nodo.style.zIndex === '999999');
+                    nodo.tagName === 'DIV' && !nodo.id && nodo.style && nodo.style.zIndex === (clickDrop.z || '999999'));
                 modal.abierto = !!ov;
                 if (ov) {
                     modal.texto = (ov.textContent || '').replace(/\s+/g, ' ').trim();
