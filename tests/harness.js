@@ -301,7 +301,10 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             }).length,
         // El `display` inline de cada grupo de Kick, en orden. Es la huella de lo que
         // escondimos nosotros, y lo que dice si una pestaña se quedo en blanco.
-        grupos: Array.from(w.document.querySelectorAll('.bg-surface-base.rounded-2xl'))
+        // Con las DOS generaciones de clases, como el script (ver CLS_SURFACE): con solo
+        // la vieja, sobre un fixture de septiembre esto daba [] y cualquier comprobacion
+        // de «ningun grupo escondido» pasaba sin haber mirado nada.
+        grupos: Array.from(w.document.querySelectorAll('.bg-surface-base.rounded-2xl, .bg-surface-bg-default.rounded-2xl'))
             .map(n => n.style.display || ''),
         ruta: w.location.pathname
     });
