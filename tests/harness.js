@@ -947,6 +947,34 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                         ajuste: img.style.objectFit || ''
                     };
                 }),
+                // LOS BOTONES DE CABECERA LLEVADOS AL PIE. Una entrada por "Más detalles":
+                // lo que queda en su pie (texto, si es clon nuestro, clases de breakpoint)
+                // y si la cabecera de su tarjeta quedo con `lg:hidden`. `repintarPie()`
+                // es un gancho VIVO (pide `dejarAbierta`): borra los clones como haria
+                // React al repintar y devuelve la foto de nuevo pasado el observer.
+                botonesPie: (() => {
+                    const foto = () => Array.from(d.querySelectorAll('button[aria-haspopup="dialog"]')).map(btn => {
+                        const pie = btn.parentElement;
+                        const hijos = Array.from(pie.children).map(el => ({
+                            texto: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+                            href: el.getAttribute('href'),
+                            clon: el.hasAttribute('data-kick-drops-footer-clone'),
+                            lgHidden: el.classList.contains('lg:hidden'),
+                            maxLgHidden: el.classList.contains('max-lg:hidden')
+                        }));
+                        let tarjeta = pie.parentElement;
+                        while (tarjeta && tarjeta !== d.body && !tarjeta.querySelector('a.max-lg\\:hidden[href^="/category/"]')) tarjeta = tarjeta.parentElement;
+                        const cab = tarjeta && tarjeta !== d.body ? tarjeta.querySelector('a.max-lg\\:hidden[href^="/category/"]').parentElement : null;
+                        return { hijos, cabeceraLgHidden: !!(cab && cab.classList.contains('lg:hidden')),
+                                 cabecera: cab ? Array.from(cab.children).map(el => (el.textContent || '').trim()) : null };
+                    });
+                    const r = foto();
+                    r.repintarPie = () => {
+                        d.querySelectorAll('[data-kick-drops-footer-clone]').forEach(c => c.remove());
+                        return new Promise(res => setTimeout(() => res(foto()), 800));
+                    };
+                    return r;
+                })(),
                 visibleClaimedCards: Array.from(d.querySelectorAll('.border-outline-decorative'))
                     .filter(n => { for (let e = n; e && e !== d.body; e = e.parentElement) if (e.style && e.style.display === 'none') return false; return true; }).length
             };
