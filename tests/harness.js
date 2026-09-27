@@ -640,9 +640,14 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             const paneCards = pane => Array.from(d.querySelectorAll(`#kick-drops-${pane}-pane [data-notif-title]`))
                 .map(c => {
                     const shareBtn = c.querySelector('.drop-share-btn');
+                    const img = c.querySelector('img');
                     return {
                         title: c.getAttribute('data-notif-title'),
                         text: c.textContent.replace(/\s+/g, ' ').trim().slice(0, 160),
+                        // La imagen de la tarjeta tal cual la escribio el script. Hace falta
+                        // para la caida a la imagen de la recompensa cuando la categoria no
+                        // trae la suya (test-panel-vacio): sin esto ese caso no se media.
+                        imagen: img ? (img.getAttribute('src') || '') : null,
                         // La ventana de fechas. Se lee aparte del texto porque hay DOS
                         // formatos y no significan lo mismo: el del DOM lleva la hora
                         // («21 ago 2026, 4:00 - …») y el que compone la API no («21 ago
@@ -831,6 +836,12 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     // La solapa de alertas cuenta ahora tambien la racha del dia.
                     notifs: tabLabel('notifs')
                 },
+                // El texto de cada solapa del panel, entero. Es lo que dice si una solapa
+                // sin tarjetas se quedo EN BLANCO o enseña su mensaje de «no hay nada».
+                panelTexto: Object.fromEntries(['active', 'upcoming', 'expired'].map(id => {
+                    const el = d.getElementById('kick-drops-' + id + '-pane');
+                    return [id, el ? el.textContent.replace(/\s+/g, ' ').trim() : null];
+                })),
                 active: paneCards('active'),
                 upcoming: paneCards('upcoming'),
                 expired: paneCards('expired'),

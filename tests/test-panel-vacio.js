@@ -35,6 +35,9 @@ const CASOS = [
     { nombre: 'campaigns con campaña', url: '/drops/campaigns', html: group }
 ];
 
+const fallos = [];
+const NO_HAY = /^✓ No se encontraron/;
+
 (async () => {
     for (const c of CASOS) {
         const r = await run({
@@ -47,10 +50,32 @@ const CASOS = [
             solapas: r.tabLabels,
             abiertos: r.active.map(x => x.title),
             cerrados: r.expired.map(x => x.title),
-            mensajeVisible: r.paneMessage,
-            imagenes: r.expiredImgs,
+            panelTexto: r.panelTexto,
+            imagenes: r.expired.map(x => x.title + ' -> ' + x.imagen),
             logs: r.logs.filter(l => !l.includes('navigation to another')).slice(0, 2)
         }));
+
+        // Ninguna solapa en blanco: o trae tarjetas, o dice que no hay nada. Y las tres
+        // cuentas puestas, que era la otra mitad de lo que se perdia.
+        const cuenta = { active: r.active.length, upcoming: r.upcoming.length, expired: r.expired.length };
+        for (const id of ['active', 'upcoming', 'expired']) {
+            const txt = (r.panelTexto && r.panelTexto[id]) || '';
+            if (!txt) fallos.push(`${c.nombre}: la solapa ${id} esta en blanco`);
+            else if (!cuenta[id] && !NO_HAY.test(txt)) fallos.push(`${c.nombre}: la solapa ${id} sin tarjetas y sin el mensaje de «no hay nada»`);
+            if (!/\(\d+\)$/.test(r.tabLabels[id] || '')) fallos.push(`${c.nombre}: la solapa ${id} sin cuenta («${r.tabLabels[id]}»)`);
+        }
+        // Las dos cerradas de la API, en cualquier pestaña por la que se entre.
+        if (JSON.stringify(r.expired.map(x => x.title)) !== JSON.stringify(['Rust - Facepunch Studios', 'GTA - Rockstar']))
+            fallos.push(`${c.nombre}: cerradas = ${JSON.stringify(r.expired.map(x => x.title))}`);
+        // GTA no trae imagen de categoria: cae a la de su recompensa en vez de quedarse vacia.
+        const img = t => (r.expired.find(x => x.title.startsWith(t)) || {}).imagen || '';
+        if (!/drops\/reward\/x\.png$/.test(img('GTA'))) fallos.push(`${c.nombre}: GTA sin la imagen de la recompensa (${img('GTA')})`);
+        if (!/images\/subcategory\/rust\.jpg$/.test(img('Rust'))) fallos.push(`${c.nombre}: Rust sin su imagen de categoria (${img('Rust')})`);
+        // Y solo la pestaña de campañas con una delante tiene abiertas.
+        const abiertos = JSON.stringify(r.active.map(x => x.title));
+        const esperado = c.html && c.url === '/drops/campaigns' ? '["Rust - Facepunch Studios"]' : '[]';
+        if (abiertos !== esperado) fallos.push(`${c.nombre}: abiertas = ${abiertos}, se esperaba ${esperado}`);
     }
-    process.exit(0);
+    console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
+    process.exit(fallos.length ? 1 : 0);
 })().catch(e => { console.error('FALLO', e); process.exit(1); });

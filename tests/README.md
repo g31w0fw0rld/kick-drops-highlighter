@@ -5,9 +5,13 @@ que deja pintado: los ids `drop-match-*`, el color del borde, las tarjetas del p
 rejilla de reclamados. Se miran **efectos observables**, los que ve el usuario, y no
 funciones internas: así un refactor no rompe los tests y un cambio de comportamiento sí.
 
-No hay framework. Cada test es un fichero que se ejecuta solo e imprime lo que encontró;
-los que terminan en un veredicto dicen `TODO OK` o `FALLOS: …`, y el resto son
-descriptivos —se leen— porque comprueban forma, no igualdad.
+No hay framework. Cada test es un fichero que se ejecuta solo, imprime lo que encontró y
+termina en un veredicto —`TODO OK` / `todo en verde` o la lista de `FALLOS`— **con el código
+de salida a juego**: 1 si falla algo. Hasta el 2026-09-26 no era así: diecisiete imprimían
+`FALLOS` y salían en 0 igual, y cuatro no tenían veredicto y solo se leían, así que un bucle
+que mirara el código de salida los daba por buenos pasara lo que pasara. Al revisar una
+suite, lo que cuenta es ese código; y si se busca en las salidas, la palabra es `FALLOS`
+(y `FALLA` en los que listan comprobación a comprobación), no solo una de las dos.
 
 ## Correr
 
@@ -44,12 +48,10 @@ pide tiene que salir él mismo.
 | `test-ocultar-reclamado.js` | Que la recompensa ya reclamada desaparezca de la página con la casilla marcada, y **sólo esa**: la del mismo fixture sin reclamar se queda (la baldosa pelada es idéntica, así que decidirlo por la forma del DOM fallaría), la casilla apagada no esconde nada, y marcarla a mitad de sesión también esconde |
 | `test-comingsoon.js` | Resaltado azul en `/drops/coming-soon`, y que su 🔗 enlace a **esa** pestaña y no a la de abiertas |
 | `test-api-panel.js` | Las tres secciones llenas desde la API, sin duplicar lo escaneado, y el 🔗 de una próxima compartida **desde abiertas** |
-| `test-panel-vacio.js` | Cuatro rutas sin campañas: el panel no se queda mudo |
+| `test-panel-vacio.js` | Cuatro rutas sin campañas: el panel no se queda mudo —cada solapa trae tarjetas o el «✓ No se encontraron…», y las tres cuentas—, las dos cerradas de la API salen por cualquier pestaña, y GTA, sin imagen de categoría, cae a la de su recompensa. Esos dos últimos no se medían: el test leía `paneMessage` y `expiredImgs`, que el harness no devolvía, y como no tenía veredicto nadie lo vio. Sensibilidad comprobada contra una copia sin esa caída de imagen: falla solo la comprobación de GTA |
 | `test-chips-share.js` | El caso real: `rage` dentro de «averageaden» tiene que sacar su etiqueta; 🔗 solo en abiertas |
-| `test-claimed.js` | `/drops/claimed` con el DOM real, sin datos de progreso: la rejilla no se pinta y lo de Kick se queda |
-| `test-claimed-hide.js` | Con la casilla marcada: bloque de Kick escondido, rejilla con título |
 | `test-claimed-nodup.js` | Con la casilla **apagada**: nada de lista duplicada, y ni un botón nuestro encima de las tarjetas |
-| `test-claimed-late.js` | El panel de Kick montándose tarde: la rejilla tiene que aparecer igual |
+| `test-claimed-late.js` | El panel de Kick montándose tarde: la rejilla tiene que aparecer igual, con su título, las dos tarjetas de los datos y a la vista. Cubre también lo que miraba `test-claimed-hide.js` (borrado el 2026-09-26): que la rejilla no se esconda a sí misma |
 | `test-claimed-sin-datos.js` | Reclamados **sin** datos de progreso: la pestaña no se puede quedar en blanco |
 | `test-cartel-buscando.js` | El cartel naranja del panel, mirado **a mitad de vuelo**: visible mientras busca, fuera al acabar |
 | `test-expired.js` | La ruta `/drops/expired` con su DOM real: las cerradas que casan van en **rojo** |

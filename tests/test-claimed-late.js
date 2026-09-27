@@ -26,5 +26,13 @@ const progress = [{
         rejillaTarjetas: r.claimedGridCards,
         rejillaOculta: r.gridHidden
     }, null, 2));
-    process.exit(0);
+    // Con el panel montado a los 9 s, la rejilla tiene que estar igual: pintada, con su
+    // titulo, las dos recompensas de los datos, y a la vista.
+    const fallos = [];
+    if (!r.claimedGrid) fallos.push('la rejilla no se pinto con el panel montado tarde');
+    if (r.gridTitle !== 'Reclamados') fallos.push('titulo de la rejilla: ' + r.gridTitle);
+    if (r.claimedGridCards !== 2) fallos.push('tarjetas en la rejilla: ' + r.claimedGridCards);
+    if (r.gridHidden !== false) fallos.push('la rejilla quedo escondida');
+    console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
+    process.exit(fallos.length ? 1 : 0);
 })().catch(e => { console.error('FALLO', e); process.exit(1); });

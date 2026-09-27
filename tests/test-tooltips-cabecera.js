@@ -91,5 +91,5 @@ const vuelta = (collapsado) => run({
     revisa(caso(cerrado, 'collapse-btn'), '🔽 (contraído)', 'Mostrar el panel');
 
     console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
-    process.exit(0);
+    process.exit(fallos.length ? 1 : 0);
 })().catch(e => { console.error('FALLO', e); process.exit(1); });

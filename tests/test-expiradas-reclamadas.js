@@ -112,5 +112,5 @@ const keywords = JSON.stringify(['kick', 'runescape', 'rust', 'grand theft auto'
         fallos.push('sin datos de inventario se escondio una cerrada que no se puede juzgar');
 
     console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
-    process.exit(0);
+    process.exit(fallos.length ? 1 : 0);
 })().catch(e => { console.error('FALLO', e); process.exit(1); });
