@@ -14,6 +14,24 @@ const HERE = __dirname;
 
 const readFixture = f => fs.readFileSync(path.join(HERE, f), 'utf8');
 
+// LOS PANELES DE UN VOLCADO DE docs/, tal cual los dejo Kick. Los volcados son el <main>
+// de la pagina, y dentro van las pestañas montadas UNA TRAS OTRA: la de delante y las que
+// Kick deja escondidas con `display: none !important` (el de campañas del 2026-09-26
+// trae reclamados y cerradas asi). Se devuelven en el formato de `panels` —oculto o no,
+// y el contenido del `div.flex.flex-col.gap-5` que `page()` vuelve a envolver— para que
+// el volcado sea la fixture y no haya una copia recortada que se quede atras.
+function panelesDeVolcado(nombre) {
+    const html = fs.readFileSync(path.join(HERE, '..', 'docs', nombre), 'utf8');
+    const d = new JSDOM(html).window.document;
+    const cont = d.querySelector('div.flex.flex-col.gap-4.rounded-lg.py-3');
+    if (!cont) throw new Error('volcado sin el contenedor de pestañas: ' + nombre);
+    return Array.from(cont.children).slice(1).map(c => {
+        const dentro = c.querySelector(':scope > div > div.flex.flex-col.gap-5');
+        if (!dentro) throw new Error('panel sin div.gap-5 en ' + nombre);
+        return { hidden: /display:\s*none/.test(c.getAttribute('style') || ''), html: dentro.innerHTML };
+    });
+}
+
 function page({ url, panels, cofre }) {
     // `panels`: [{ hidden: bool, html }] en orden. Kick deja montadas las
     // pestañas inactivas con display:none !important.
@@ -1004,4 +1022,4 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     });
 }
 
-module.exports = { run, readFixture };
+module.exports = { run, readFixture, panelesDeVolcado };
