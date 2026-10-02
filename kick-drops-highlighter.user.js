@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.23
+// @version      1.3.24
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.23";
+    const SCRIPT_VERSION = "1.3.24";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -711,6 +711,8 @@
                 editPrompt: "Palabras clave separadas por coma:",
                 searching: "Buscando",
                 reload: "Recargar drops",
+                resetAlerts: "Restablecer alertas",
+                confirmResetAlerts: "¿Restablecer las alertas? Todas las campañas que casen con tus keywords volverán a salir como nuevas (🔔).",
                 hideExpired: "Ocultar cerrados/completados del inventario, reclamacion de drops automatica",
                 changes_detected: "Cambios detectados",
                 viewed: "Mostrar",
@@ -802,6 +804,8 @@
                 editPrompt: "Comma-separated keywords:",
                 searching: "Searching",
                 reload: "Reload drops",
+                resetAlerts: "Reset alerts",
+                confirmResetAlerts: "Reset alerts? Every campaign matching your keywords will show up as new again (🔔).",
                 hideExpired: "Hide expired/completed from inventory, automatic drops claiming",
                 changes_detected: "Changes detected",
                 viewed: "Shown",
@@ -895,6 +899,8 @@
                 dropsExpired: "Geschlossene Drops", dropsUpcoming: "Kommende Drops",
                 editPrompt: "Kommagetrennte Keywords:",
                 searching: "Suche", reload: "Drops neu laden",
+                resetAlerts: "Hinweise zurücksetzen",
+                confirmResetAlerts: "Hinweise zurücksetzen? Jede Kampagne, die zu deinen Keywords passt, erscheint wieder als neu (🔔).",
                 hideExpired: "Abgelaufene/erledigte aus dem Inventar ausblenden, Drops automatisch abholen",
                 changes_detected: "Änderungen erkannt", viewed: "Anzeigen",
                 markAllAsViewed: "Alle als gesehen markieren",
@@ -964,6 +970,8 @@
                 dropsUpcoming: "Drops à venir",
                 editPrompt: "Mots-clés séparés par des virgules :",
                 searching: "Recherche", reload: "Recharger les drops",
+                resetAlerts: "Réinitialiser les alertes",
+                confirmResetAlerts: "Réinitialiser les alertes ? Chaque campagne qui correspond à tes mots-clés réapparaîtra comme nouvelle (🔔).",
                 hideExpired: "Masquer les terminés/complétés de l'inventaire, réclamation automatique des drops",
                 changes_detected: "Changements détectés", viewed: "Afficher",
                 markAllAsViewed: "Tout marquer comme vu",
@@ -1033,6 +1041,8 @@
                 dropsUpcoming: "Drops Próximos",
                 editPrompt: "Keywords separadas por vírgula:",
                 searching: "Buscando", reload: "Recarregar drops",
+                resetAlerts: "Repor alertas",
+                confirmResetAlerts: "Repor os alertas? Todas as campanhas que correspondem às tuas keywords voltam a aparecer como novas (🔔).",
                 hideExpired: "Ocultar fechados/completos do inventário, resgate automático de drops",
                 changes_detected: "Alterações detetadas", viewed: "Mostrar",
                 markAllAsViewed: "Marcar todas como vistas",
@@ -1101,6 +1111,8 @@
                 dropsExpired: "Закрытые дропы", dropsUpcoming: "Предстоящие дропы",
                 editPrompt: "Ключевые слова через запятую:",
                 searching: "Поиск", reload: "Перезагрузить дропы",
+                resetAlerts: "Сбросить оповещения",
+                confirmResetAlerts: "Сбросить оповещения? Все кампании, подходящие под твои ключевые слова, снова появятся как новые (🔔).",
                 hideExpired: "Скрывать закрытые/выполненные из инвентаря, автоматический сбор дропов",
                 changes_detected: "Обнаружены изменения", viewed: "Показать",
                 markAllAsViewed: "Отметить все как просмотренные",
@@ -1170,6 +1182,8 @@
                 dropsUpcoming: "Yaklaşan Drops",
                 editPrompt: "Virgülle ayrılmış anahtar kelimeler:",
                 searching: "Aranıyor", reload: "Dropları yeniden yükle",
+                resetAlerts: "Uyarıları sıfırla",
+                confirmResetAlerts: "Uyarılar sıfırlansın mı? Anahtar kelimelerinle eşleşen her kampanya yeniden yeni olarak görünecek (🔔).",
                 hideExpired: "Kapananları/tamamlananları envanterden gizle, dropları otomatik al",
                 changes_detected: "Değişiklik bulundu", viewed: "Göster",
                 markAllAsViewed: "Tümünü görüldü işaretle",
@@ -1239,6 +1253,8 @@
                 dropsUpcoming: "近日公開のドロップ",
                 editPrompt: "カンマ区切りのキーワード:",
                 searching: "検索中", reload: "ドロップを再読み込み",
+                resetAlerts: "通知をリセット",
+                confirmResetAlerts: "通知をリセットしますか？ キーワードに一致するすべてのキャンペーンが再び新着として表示されます (🔔)。",
                 hideExpired: "終了・完了済みをインベントリから隠す、ドロップの自動受け取り",
                 changes_detected: "変更を検出", viewed: "表示",
                 markAllAsViewed: "すべて既読にする",
@@ -1308,6 +1324,8 @@
                 dropsUpcoming: "예정된 드롭",
                 editPrompt: "쉼표로 구분된 키워드:",
                 searching: "검색 중", reload: "드롭 새로고침",
+                resetAlerts: "알림 초기화",
+                confirmResetAlerts: "알림을 초기화할까요? 키워드와 일치하는 모든 캠페인이 다시 새 항목으로 표시됩니다 (🔔).",
                 hideExpired: "종료·완료된 항목을 인벤토리에서 숨기기, 드롭 자동 수령",
                 changes_detected: "변경 사항 감지", viewed: "표시",
                 markAllAsViewed: "모두 확인함으로 표시",
@@ -1377,6 +1395,8 @@
                 dropsUpcoming: "Nadchodzące dropy",
                 editPrompt: "Słowa kluczowe oddzielone przecinkami:",
                 searching: "Szukanie", reload: "Przeładuj dropy",
+                resetAlerts: "Resetuj alerty",
+                confirmResetAlerts: "Zresetować alerty? Każda kampania pasująca do twoich słów kluczowych znów pojawi się jako nowa (🔔).",
                 hideExpired: "Ukryj zakończone/ukończone w ekwipunku, automatyczne odbieranie dropów",
                 changes_detected: "Wykryto zmiany", viewed: "Pokaż",
                 markAllAsViewed: "Oznacz wszystkie jako przejrzane",
@@ -1446,6 +1466,8 @@
                 dropsUpcoming: "Tulevat dropit",
                 editPrompt: "Avainsanat pilkulla eroteltuina:",
                 searching: "Etsitään", reload: "Lataa dropit uudelleen",
+                resetAlerts: "Nollaa hälytykset",
+                confirmResetAlerts: "Nollataanko hälytykset? Jokainen avainsanoihisi osuva kampanja näkyy taas uutena (🔔).",
                 hideExpired: "Piilota päättyneet/valmiit inventaariosta, dropien automaattinen lunastus",
                 changes_detected: "Muutoksia havaittu", viewed: "Näytä",
                 markAllAsViewed: "Merkitse kaikki nähdyiksi",
@@ -1515,6 +1537,8 @@
                 dropsUpcoming: "Drop sắp tới",
                 editPrompt: "Từ khóa phân cách bằng dấu phẩy:",
                 searching: "Đang tìm", reload: "Tải lại drop",
+                resetAlerts: "Đặt lại cảnh báo",
+                confirmResetAlerts: "Đặt lại cảnh báo? Mọi chiến dịch khớp từ khóa của bạn sẽ lại hiện như mới (🔔).",
                 hideExpired: "Ẩn mục đã kết thúc/hoàn thành khỏi kho, tự động nhận drop",
                 changes_detected: "Đã phát hiện thay đổi", viewed: "Hiện",
                 markAllAsViewed: "Đánh dấu tất cả đã xem",
@@ -1584,6 +1608,8 @@
                 dropsUpcoming: "即将推出的掉宝",
                 editPrompt: "逗号分隔的关键词：",
                 searching: "搜索中", reload: "重新加载掉宝",
+                resetAlerts: "重置提醒",
+                confirmResetAlerts: "要重置提醒吗？所有匹配你关键词的活动都会再次显示为新的（🔔）。",
                 hideExpired: "在库存中隐藏已结束/已完成，自动领取掉宝",
                 changes_detected: "检测到变更", viewed: "显示",
                 markAllAsViewed: "全部标记为已看",
@@ -1653,6 +1679,8 @@
                 dropsUpcoming: "دروبات قادمة",
                 editPrompt: "كلمات مفتاحية مفصولة بفواصل:",
                 searching: "جاري البحث", reload: "إعادة تحميل الدروبات",
+                resetAlerts: "إعادة ضبط التنبيهات",
+                confirmResetAlerts: "إعادة ضبط التنبيهات؟ ستظهر كل حملة تطابق كلماتك المفتاحية كجديدة مرة أخرى (🔔).",
                 hideExpired: "إخفاء المنتهية/المكتملة من المخزون، مطالبة تلقائية بالدروبس",
                 changes_detected: "تم رصد تغييرات", viewed: "إظهار",
                 markAllAsViewed: "تعليم الكل كمقروء",
@@ -1722,6 +1750,8 @@
                 dropsUpcoming: "आगामी ड्रॉप",
                 editPrompt: "अल्पविराम से अलग कीवर्ड:",
                 searching: "खोज रहे हैं", reload: "ड्रॉप पुनः लोड करें",
+                resetAlerts: "अलर्ट रीसेट करें",
+                confirmResetAlerts: "अलर्ट रीसेट करें? आपके कीवर्ड से मेल खाने वाला हर अभियान फिर से नया दिखेगा (🔔)।",
                 hideExpired: "समाप्त/पूर्ण को इन्वेंटरी से छिपाएँ, ड्रॉप्स स्वतः दावा",
                 changes_detected: "बदलाव मिले", viewed: "दिखाएँ",
                 markAllAsViewed: "सभी को देखा हुआ चिह्नित करें",
@@ -1791,6 +1821,8 @@
                 dropsUpcoming: "Drop Mendatang",
                 editPrompt: "Kata kunci dipisahkan koma:",
                 searching: "Mencari", reload: "Muat ulang drop",
+                resetAlerts: "Atur ulang peringatan",
+                confirmResetAlerts: "Atur ulang peringatan? Setiap kampanye yang cocok dengan kata kuncimu akan muncul lagi sebagai baru (🔔).",
                 hideExpired: "Sembunyikan yang berakhir/selesai dari inventaris, klaim drop otomatis",
                 changes_detected: "Perubahan terdeteksi", viewed: "Tampilkan",
                 markAllAsViewed: "Tandai semua sudah dilihat",
@@ -2916,6 +2948,9 @@
                     _appendDropNamesTo(card, drops);
                 });
             }
+            // Los chips cambian el alto de las tarjetas: el desplazamiento hasta la
+            // tarjeta enfocada se rehace despues de ponerlos, no antes.
+            _aplicarFocoPanel();
         }
 
         function _appendDropNamesTo(card, drops) {
@@ -3465,7 +3500,7 @@
         }
 
         // Aqui vivia checkAndHandleScriptVersion(), que al detectar un @version distinto
-        // del guardado hacia lo mismo que el boton "Recargar drops": vaciar la lista de
+        // del guardado hacia lo mismo que hoy hace «Restablecer alertas»: vaciar la lista de
         // notificaciones. Se quito el 2026-08-08 porque no compraba nada y costaba algo
         // real — cada actualizacion del script, que no las pides tu, borraba el historial
         // de campañas vistas y hacia que todas volvieran a sonar como nuevas—. Si algun
@@ -4049,15 +4084,34 @@
             }, inline);
         }
 
+        // «Recargar drops» recarga y NADA MAS. Antes vaciaba de paso la lista de avisos, y
+        // eso no era inocuo: con la lista vacia, el siguiente escaneo da por nueva cada
+        // campaña que case con tus keywords, asi que recargar volvia a poner un 🔔 en
+        // todas. Lo que borra va ahora en su propio boton, con nombre propio y
+        // confirmacion (createResetAlertsButton). Mismo cambio que en el script de Twitch,
+        // que alli ademas devuelve los descartados con la ✕; aqui no hay lista de
+        // descartados que devolver.
         function createReloadButton(inline = false) {
             return createButton(t.reload, colors.gray, () => {
                 setCollapseFlag(false);
-                resetNotifications();
                 if (!_isCampaignsPage()) {
                     location.href = _campaignsHref();
                 } else {
                     location.reload();
                 }
+            }, inline);
+        }
+
+        // Vaciar los avisos re-alerta TODO lo que casa (ver arriba): se pregunta antes.
+        function createResetAlertsButton(inline = false) {
+            return createButton(t.resetAlerts, colors.orange, () => {
+                (async () => {
+                    const ok = await showConfirmModal(t.confirmResetAlerts);
+                    if (!ok) return;
+                    resetNotifications();
+                    setCollapseFlag(false);
+                    location.reload();
+                })();
             }, inline);
         }
 
@@ -4488,6 +4542,10 @@
         // para no dar por hecho un intento que no se hizo.
         function _enfocarSolapaDeAlertas() {
             if (!cleanExpiredInventoryFlag) return false;
+            // Tampoco mientras dura el foco de una tarjeta pulsada en el panel (ver
+            // _aplicarFocoPanel). Se devuelve false y no true a proposito: asi la racha
+            // no se da por enfocada y lo vuelve a intentar en su siguiente aviso.
+            if (_focoPanelVivo()) return false;
             const tabNotifs = document.getElementById("kick-drops-tab-notifs");
             const notifsPane = document.getElementById("kick-drops-notifs-pane");
             if (!tabNotifs || !notifsPane) return false;
@@ -4978,7 +5036,16 @@
                         // intentos (9 s) o hasta recargar. Reportado el 2026-08-22:
                         // marcar la casilla aqui no cambiaba nada hasta refrescar.
                         _renderClaimedInventorySoon();
-                    } else { setCollapseFlag(false); location.reload(); }
+                    } else {
+                        // Quitarla ya no recarga, igual que en campañas y en el inventario
+                        // de Twitch. Vuelve lo que el barrido escondio —solo cuando la
+                        // pestaña traia barras: con el escaparate de hoy no esconde nada—,
+                        // un barrido en marcha deja de reclamar en su siguiente vuelta
+                        // (ver `modo` en cleanInventory), y la rejilla se repinta para
+                        // quitar del cofre el «se reclama solo», que ya no es verdad.
+                        _restoreCheckboxHidden();
+                        _renderClaimedInventorySoon();
+                    }
                 } else if (_isCampaignsPage() && !checked) {
                     // Quitarla devuelve lo escondido. No hay recarga —aqui no se toco
                     // nada mas que la visibilidad de unas baldosas— y el proximo barrido
@@ -5378,6 +5445,7 @@
             btnRow.appendChild(createEditKeywordsButton());
             btnRow.appendChild(createResetKeywordsButton());
             btnRow.appendChild(createReloadButton());
+            btnRow.appendChild(createResetAlertsButton());
             body.appendChild(btnRow);
 
             // Inventory checkboxes
@@ -5578,6 +5646,12 @@
             document.addEventListener("mouseup", () => { isDragging = false; });
 
             document.body.appendChild(panel);
+            // En cuanto TOCAS el panel —rueda, dedo o clic— el foco deja de reponerse: a
+            // partir de ahi el panel es tuyo, y un repintado que te devolviera a la
+            // tarjeta en mitad de un scroll seria pelearte con el. Los clics que da el
+            // propio script (el de la solapa) no pasan por aqui: no generan mousedown.
+            ['wheel', 'touchstart', 'mousedown'].forEach(ev =>
+                panel.addEventListener(ev, _soltarFocoPanel, { passive: true }));
             // Los avisos del script, una sola vez y para todo (panel, marcas de
             // pagina y filas de progreso). Va aqui y no en el arranque porque hasta
             // que el panel existe no hay ningun control con `title` que servir.
@@ -5646,12 +5720,110 @@
         // el scroll en una visita cualquiera de mañana, sin que nadie lo hubiera pedido.
         const FOCUS_TARGET_TTL_MS = 30000;
 
-        function _setFocusTarget(campaign) {
+        // =============================================
+        // Y LA MISMA CAMPAÑA, ENFOCADA TAMBIEN EN EL PANEL
+        // =============================================
+        // Pulsas una tarjeta del panel que vive en otra pestaña, el script te lleva alli
+        // y enfoca la campaña en la pagina. Pero las pestañas de Kick RECARGAN, asi que el
+        // panel se construye de cero: su lista vuelve arriba, a la solapa que toque (🔔 si
+        // hay avisos), y la tarjeta que acabas de pulsar ya no esta a la vista. Pedido el
+        // 2026-10-02: que el panel tambien vuelva a ella. Es el mismo mecanismo que el del
+        // script de Twitch.
+        //
+        // NO SE PONE UNA VEZ: SE REPONE DURANTE UN RATO. El panel se repinta varias veces
+        // al llegar —el escaneo, la API, el progreso— y cada repintado crea las tarjetas
+        // de nuevo y deja la lista donde caiga. Asi que el foco vive unos segundos y cada
+        // pintado lo vuelve a aplicar (al final de renderResults y de
+        // _updateAllCardsWithDropNames). Se suelta antes si tocas el panel.
+        //
+        // Lo que hace, y nada mas: abrir la solapa de la tarjeta, desplazar la lista del
+        // panel hasta dejarla en medio y marcarla con un contorno. La lista se desplaza a
+        // mano y no con scrollIntoView, que movería tambien la PAGINA y le quitaria el
+        // sitio a la campaña que se acaba de enfocar alli.
+        const PANEL_FOCUS_MS = 20000;
+        const PANEL_FOCUS_ATTR = 'data-panel-focus';
+        const PANEL_OF_STATUS = {
+            active: { pane: 'kick-drops-active-pane', tab: 'kick-drops-tab-active', color: 'primary' },
+            upcoming: { pane: 'kick-drops-upcoming-pane', tab: 'kick-drops-tab-upcoming', color: 'upcoming' },
+            expired: { pane: 'kick-drops-expired-pane', tab: 'kick-drops-tab-expired', color: 'red' }
+        };
+        let _focoPanel = null;   // { title, status, hasta }
+        let _focoPanelTimer = null;
+
+        function _focoPanelVivo() {
+            if (_focoPanel && Date.now() > _focoPanel.hasta) _soltarFocoPanel();
+            return !!_focoPanel;
+        }
+
+        function _fijarFocoPanel(target) {
+            _focoPanel = { title: target.title, status: target.status || 'active', hasta: Date.now() + PANEL_FOCUS_MS };
+            if (_focoPanelTimer) clearTimeout(_focoPanelTimer);
+            _focoPanelTimer = setTimeout(_soltarFocoPanel, PANEL_FOCUS_MS);
+            _aplicarFocoPanel();
+        }
+
+        // El contorno se va con el foco: mientras se repone dice «esta es la que
+        // pulsaste», y despues seria una marca sin significado.
+        function _soltarFocoPanel() {
+            _focoPanel = null;
+            if (_focoPanelTimer) { clearTimeout(_focoPanelTimer); _focoPanelTimer = null; }
+            document.querySelectorAll('[' + PANEL_FOCUS_ATTR + ']').forEach(c => {
+                c.removeAttribute(PANEL_FOCUS_ATTR);
+                c.style.outline = '';
+                c.style.outlineOffset = '';
+            });
+        }
+
+        function _aplicarFocoPanel() {
+            if (!_focoPanelVivo()) return false;
+            const dest = PANEL_OF_STATUS[_focoPanel.status] || PANEL_OF_STATUS.active;
+            const pane = document.getElementById(dest.pane);
+            if (!pane) return false;
+            const wanted = _fold(String(_focoPanel.title).toLowerCase());
+            const tarjetas = Array.from(pane.querySelectorAll('[data-notif-title]'));
+            const tituloDe = c => _fold(String(c.getAttribute('data-notif-title') || '').toLowerCase());
+            // El titulo exacto primero. Y si no, el JUEGO —lo de antes del « - »—, porque la
+            // misma campaña no se titula igual en las dos paginas: la tarjeta que pulsaste
+            // pudo salir de la API («KICK - 11 expired drops») y al llegar la pinta el DOM
+            // («KICK»). Solo si en esa solapa hay UNA tarjeta de ese juego: con dos, marcar
+            // la primera seria adivinar.
+            let card = tarjetas.find(c => tituloDe(c) === wanted);
+            if (!card) {
+                const juego = wanted.split(' - ')[0].trim();
+                const delJuego = tarjetas.filter(c => tituloDe(c).split(' - ')[0].trim() === juego);
+                if (delJuego.length === 1) card = delJuego[0];
+            }
+            // Puede no estar: un filtro de vista que la deja fuera, o el pintado que aun no
+            // la trae. No se insiste aqui; el siguiente pintado lo vuelve a intentar.
+            if (!card) return false;
+            if (pane.style.display === 'none') {
+                const solapa = document.getElementById(dest.tab);
+                if (solapa && solapa.onclick) solapa.onclick();
+            }
+            card.setAttribute(PANEL_FOCUS_ATTR, '1');
+            card.style.outline = `2px solid ${colors[dest.color]}`;
+            card.style.outlineOffset = '2px';
+            // El contenedor con scroll es el primer antepasado con overflow propio: la
+            // lista de solapas, no el panel entero (que no desplaza).
+            let sc = card.parentElement;
+            while (sc && sc.id !== 'kick-drops-panel' && !/auto|scroll/.test(sc.style.overflowY || '')) sc = sc.parentElement;
+            if (sc && sc.id !== 'kick-drops-panel') {
+                const r = card.getBoundingClientRect();
+                const c = sc.getBoundingClientRect();
+                sc.scrollTop += (r.top - c.top) - Math.max(0, (sc.clientHeight - r.height) / 2);
+            }
+            return true;
+        }
+
+        function _setFocusTarget(campaign, desdeElPanel = false) {
             if (!campaign || !campaign.title) return;
             try {
                 GM_setValue(FOCUS_TARGET_KEY, JSON.stringify({
                     title: campaign.title,
                     status: campaign.status || 'active',
+                    // Solo el clic en una tarjeta del panel pide ademas el foco en el
+                    // panel (ver _aplicarFocoPanel).
+                    panel: !!desdeElPanel,
                     ts: Date.now()
                 }));
             } catch (e) { /* sin destino, la navegacion sigue valiendo */ }
@@ -5741,7 +5913,7 @@
             return soloEste === ((campaign && campaign.status) || 'active');
         }
 
-        function _goToCampaignTab(campaign) {
+        function _goToCampaignTab(campaign, desdeElPanel = false) {
             const kind = TAB_OF_STATUS[campaign && campaign.status] || 'campaigns';
             // Ya estando en la pestaña que toca no hay nada que hacer: si la campaña
             // estuviera aqui, _focusCampaignOnPage ya la habria encontrado. Pulsar el
@@ -5752,7 +5924,7 @@
             // de aqui. Y solo si hay a donde ir, para no dejar un destino colgado
             // esperando una navegacion que no va a pasar.
             if (!link) return;
-            _setFocusTarget(campaign);
+            _setFocusTarget(campaign, desdeElPanel);
             link.click();
         }
 
@@ -5763,6 +5935,7 @@
         function _focusPendingCampaign(items) {
             const target = _takeFocusTarget();
             if (!target) return;
+            if (target.panel) _fijarFocoPanel(target);
             // Se busca entre lo escaneado para recuperar el NODO —el destino guardado
             // solo lleva el titulo, porque los ids se reparten de nuevo en cada
             // escaneo— y a partir de ahi se enfoca con la misma regla que un clic
@@ -6097,7 +6270,11 @@
                 // enfoca al llegar. El destino se guarda en GM_setValue y no en una
                 // variable porque las pestañas de Kick RECARGAN la pagina: nada de esta
                 // ejecucion sobrevive al clic (ver _focusPendingCampaign).
-                _goToCampaignTab(campaign);
+                //
+                // Y con la marca de que salio de una TARJETA DEL PANEL: al recargar, el
+                // panel se construye de cero y su lista vuelve arriba del todo, asi que la
+                // tarjeta que acabas de pulsar se perderia de vista (ver _aplicarFocoPanel).
+                _goToCampaignTab(campaign, true);
             };
 
             return card;
@@ -6373,6 +6550,8 @@
             fillPane(activePane, sortedActive, colors.primary, totalActive > 0 && shownActive.length === 0);
             fillPane(upcomingPane, upcomingItems, colors.upcoming, false);
             fillPane(expiredPane, expiredItems, colors.red, false);
+            // Las tarjetas son nuevas en cada pintado: el foco del panel se vuelve a poner.
+            _aplicarFocoPanel();
         }
 
         // =============================================
@@ -6600,8 +6779,10 @@
 
             updateNotificationTitleAndSound();
 
-            // Auto-switch to notifications tab when there are pending notifications
-            if (pending.length > 0) {
+            // Auto-switch to notifications tab when there are pending notifications.
+            // Salvo si se acaba de llegar desde una tarjeta del panel: lo que se pidio con
+            // ese clic es ver ESA campaña, y saltar a 🔔 se la llevaria de delante.
+            if (pending.length > 0 && !_focoPanelVivo()) {
                 const tabActiveBtn = document.getElementById("kick-drops-tab-active");
                 const tabUpcomingBtn = document.getElementById("kick-drops-tab-upcoming");
                 const tabExpiredBtn = document.getElementById("kick-drops-tab-expired");
@@ -8888,10 +9069,31 @@
             if (!btn || btn.dataset.kickAutoClicked) return false;
             btn.dataset.kickAutoClicked = "true";
             setTimeout(() => {
+                // Si la casilla se quito entre medias no se pulsa, y se le quita la marca:
+                // volver a ponerla tiene que poder reclamarlo. Todas las llamadas salen
+                // del barrido, que solo reclama con la casilla puesta.
+                if (!cleanExpiredInventoryFlag) { delete btn.dataset.kickAutoClicked; return; }
                 btn.click();
                 _scheduleProgressRefetch();
             }, delaySlot * 200);
             return true;
+        }
+
+        // LO QUE ESCONDE LA CASILLA, con su propia marca. No vale `data-kick-hidden`:
+        // esa la usa ademas la rejilla de reclamados para tapar la lista de Kick
+        // (_hideKickClaimedBlocks), y devolver todo lo que la lleve al quitar la casilla
+        // resucitaria esa lista debajo de la nuestra.
+        const CHECKBOX_HIDDEN_ATTR = 'data-kick-hidden-casilla';
+        function _hideByCheckbox(el) {
+            if (!el || el.hasAttribute(CHECKBOX_HIDDEN_ATTR)) return;
+            el.setAttribute(CHECKBOX_HIDDEN_ATTR, '1');
+            el.style.display = 'none';
+        }
+        function _restoreCheckboxHidden() {
+            document.querySelectorAll('[' + CHECKBOX_HIDDEN_ATTR + ']').forEach(el => {
+                el.removeAttribute(CHECKBOX_HIDDEN_ATTR);
+                el.style.display = '';
+            });
         }
 
         /**
@@ -8923,7 +9125,13 @@
             let attempts = 0;
             const maxAttempts = 15;
             const interval = 600;
-            const doClaim = (type === "expired" || type === "claim");
+            // EL MODO SE LEE EN CADA VUELTA, no se fija al arrancar, por lo mismo que la
+            // pestaña de abajo: el intervalo vive 9 s y la casilla se puede quitar dentro
+            // de esa ventana. Con el modo congelado, un barrido lanzado con la casilla
+            // puesta seguia reclamando —y en reclamados, escondiendo— despues de quitarla.
+            // Degrada a '' y no se para, porque el barrido tambien engancha el tooltip y
+            // el modal de progreso, que no dependen de la casilla.
+            const modo = () => ((type === "expired" || type === "claim") && !cleanExpiredInventoryFlag) ? "" : type;
             // LA PESTAÑA PARA LA QUE SE ARRANCO ESTE BARRIDO.
             //
             // `type` se congela al llamar y este intervalo vive NUEVE SEGUNDOS (15 x 600 ms)
@@ -8956,6 +9164,8 @@
 
             const checker = setInterval(() => {
                 attempts++;
+                const tipo = modo();
+                const doClaim = (tipo === "expired" || tipo === "claim");
 
                 // Y se comprueba ANTES de tocar nada: el cambio de pestaña ocurre entre dos
                 // vueltas, asi que la primera vuelta de despues tiene que salirse sin haber
@@ -8995,7 +9205,7 @@
                 // corre en un intervalo, asi que es el sitio natural para vigilarlo.
                 const gridPainted = !!document.getElementById('kick-claimed-inventory');
                 if (isTrophyCase && !gridPainted) _restoreKickClaimedBlocks();
-                const doHide = isTrophyCase ? false : (type === "expired");
+                const doHide = isTrophyCase ? false : (tipo === "expired");
 
                 // En CAMPAÑAS lo que sobra no es la campaña, es la recompensa que ya
                 // cobraste; va por su cuenta y no por `doHide`, que aqui es false a
@@ -9014,7 +9224,7 @@
                         if (!text) return;
                         if (!EXPIRED_HEADER_TEXTS.some(t => text === _fold(t))) return;
                         const section = h1.parentElement;
-                        if (section) section.style.display = 'none';
+                        if (section) _hideByCheckbox(section);
                     });
                 }
 
@@ -9063,7 +9273,8 @@
                     // ahora la RECOMPENSA, que es lo que la rejilla enseña de una en una.
                     // La clave guardada pasa de ser el nombre del grupo a ser el id (ULID)
                     // de la reward, asi que lo que hubiera descartado de antes deja de
-                    // casar y reaparece una vez; "Recargar drops" lo vacia igual.
+                    // casar y reaparece una vez. (Hoy ya no queda ni el ❌ ni su lista:
+                    // en el script no hay descartados que guardar ni que restablecer.)
 
                     // Find all drop items (li elements) inside this campaign
                     const dropItems = container.querySelectorAll('li');
@@ -9107,7 +9318,7 @@
                             const isClaimed = CLAIMED_TEXTS.some(ct => statusText.includes(ct));
                             if (isClaimed && doHide) {
                                 // Hide individual claimed drop items
-                                li.style.display = 'none';
+                                _hideByCheckbox(li);
                             }
                             // Y EN CERRADAS, SIN BARRA, EL BOTON DECIDE SOLO. Una campaña
                             // cerrada no se da por perdida: lo que caduca es el progreso y
@@ -9141,7 +9352,7 @@
                     if (doHide && allClaimedOrComplete && !hasClaimableButton && dropItems.length > 0) {
                         const accordion = hideTarget();
                         if (accordion && accordion.parentElement) {
-                            accordion.style.display = 'none';
+                            _hideByCheckbox(accordion);
                         }
                     }
                 });

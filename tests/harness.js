@@ -826,7 +826,30 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 tabClicks,
                 botonesPulsados,
                 paneles: d.querySelectorAll("#kick-drops-panel").length,
+                // El foco del panel al llegar desde una tarjeta (2026-10-02): que tarjetas
+                // quedaron marcadas y que solapa se ve. El desplazamiento no se puede
+                // medir —jsdom no hace layout—, asi que se mira lo que lo decide.
+                focoPanel: {
+                    marcadas: Array.from(d.querySelectorAll('[data-panel-focus]')).map(c => c.getAttribute('data-notif-title')),
+                    solapaVisible: ['active', 'upcoming', 'expired', 'notifs']
+                        .find(k => { const p = d.getElementById('kick-drops-' + k + '-pane'); return p && p.style.display !== 'none'; }) || null
+                },
                 stored: Object.fromEntries(store),
+                // GANCHO VIVO (pide `dejarAbierta`): pulsa un boton por su texto —del panel o
+                // de fuera de el, que es donde cae el modal de confirmar— y relee el almacen
+                // DESPUES, que `stored` es una foto de antes. Hizo falta para separar
+                // «Recargar drops» de «Restablecer alertas» (2026-10-01): lo que hay que
+                // comprobar es que un boton NO borra y el otro SI, y solo tras confirmar.
+                botones: {
+                    pulsar: (texto, { enPanel = true } = {}) => {
+                        const b = Array.from(d.querySelectorAll('button'))
+                            .filter(n => !!n.closest('#kick-drops-panel') === enPanel)
+                            .find(n => (n.textContent || '').trim() === texto);
+                        if (b) b.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+                        return new Promise(res => setTimeout(() => res(!!b), 1000));
+                    },
+                    almacen: (clave) => store.get(clave)
+                },
                 matches,
                 copied,
                 tabLabels: {
@@ -1020,11 +1043,13 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             // que cada caso soltaba su DOM entero al terminar.
             // `dejarAbierta` es para los informes que traen ganchos VIVOS: cerrar ahi les
             // quita el DOM y el test revienta con un TypeError, no con un FALLOS. Los
-            // ganchos son exactamente DOS, y conviene tenerlos apuntados porque no se
+            // ganchos son exactamente TRES, y conviene tenerlos apuntados porque no se
             // distinguen del resto del informe mirandolo:
             //
             //   racha.marcarVista()       pulsa el 👁️ del aviso del reto del dia.
             //   <tarjeta>.clickShare()    pulsa el 🔗 de una tarjeta del panel.
+            //   botones.pulsar(texto)     pulsa un boton por su texto (y botones.almacen
+            //                             relee el GM_getValue de despues).
             //
             // Quien pida `dejarAbierta` se queda con el proceso colgado, asi que tiene que
             // salir el mismo (`process.exit`).
