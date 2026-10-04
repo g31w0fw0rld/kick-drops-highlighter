@@ -89,20 +89,29 @@ if (conCola.length) fallos.push(`la descripción sigue terminando en la cifra de
 else ok('ninguna descripción termina ya en «16 idiomas.»');
 
 // --- El agrupado ---------------------------------------------------------------------
-const sueltas = (mod, l) => {
+// CADA IDIOMA SE PRUEBA DOS VECES: con su texto y con su texto mas una frase de control.
+// La guarda solo actua con un numero IMPAR de frases, y el texto real cambia de paridad con
+// cada frase que se añade a «Saber más»: el 2026-10-03, la de los canales en vivo dejo los
+// 16 de Kick en par, y el control de abajo se quedo sin ningun caso que ejercitar —sin que
+// la guarda hubiera cambiado—. Con las dos variantes siempre hay una impar por idioma, asi
+// que el control ya no depende de cuantas frases tenga hoy el texto.
+const FRASE_CONTROL = ' Frase de control.';
+const VARIANTES = ['', FRASE_CONTROL];
+const sueltas = (mod, l, extra = '') => {
     const { _splitSentences, _infoParagraphs } = mod(l);
-    const texto = i18n[l].scriptInfoDescriptionText;
+    const texto = i18n[l].scriptInfoDescriptionText + extra;
     const parrafos = _infoParagraphs(texto, 2);
     const ultima = parrafos[parrafos.length - 1];
     return parrafos.length > 1 && _splitSentences(ultima).length === 1 ? ultima : null;
 };
 
-const control = LANGS.filter(l => sueltas(sinGuarda, l));
-if (!control.length) {
-    fallos.push('CONTROL: sin la guarda ningún idioma deja una frase sola, así que el caso de abajo no prueba nada');
-} else ok(`CONTROL: sin la guarda quedaría una frase sola en ${control.length} idioma(s): ${control.join(' ')}`);
+const control = LANGS.filter(l => VARIANTES.some(v => sueltas(sinGuarda, l, v)));
+if (control.length !== LANGS.length) {
+    fallos.push('CONTROL: sin la guarda deberia quedar una frase sola en una de las dos variantes de cada idioma, y no pasa en: ' +
+        LANGS.filter(l => !control.includes(l)).join(' '));
+} else ok(`CONTROL: sin la guarda quedaria una frase sola en los ${control.length} idiomas (en la variante impar)`);
 
-const conFrase = LANGS.map(l => [l, sueltas(conGuarda, l)]).filter(([, u]) => u);
+const conFrase = LANGS.flatMap(l => VARIANTES.map(v => [l + (v ? '+1' : ''), sueltas(conGuarda, l, v)])).filter(([, u]) => u);
 if (conFrase.length) {
     fallos.push('queda una frase sola al final de «Saber más»: ' +
         conFrase.map(([l, u]) => `${l} «${u.slice(0, 50)}»`).join(' · '));

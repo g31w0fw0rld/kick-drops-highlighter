@@ -125,7 +125,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -172,8 +172,55 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     w.AudioContext = function () { return { createOscillator: () => ({ connect() { }, start() { }, stop() { } }), createGain: () => ({ connect() { }, gain: { value: 0 } }), destination: {}, currentTime: 0 }; };
     // Un solo stub para las dos rutas: cada una devuelve su payload. El
     // interceptor del script distingue por pathname, igual que en el navegador.
-    w.fetch = async (u) => {
+    // `canalesApi` contesta a `kick.com/api/v2/channels/<slug>/livestream`, la consulta
+    // de quien esta en vivo del dialogo de canales: `{ slug: cuerpo }` con el JSON tal
+    // cual lo da Kick (`{ data: null }` o `{ data: { viewers, … } }`), o un NUMERO para
+    // contestar con ese status. `canalesApiCompleto` hace lo mismo con la ruta completa
+    // (`/channels/<slug>`, con `livestream.viewer_count`), que es el respaldo del script.
+    // Un slug que no este responde 404. Las de la ruta completa se anotan como
+    // `<slug>#completo`. Cada peticion tarda 50 ms y se anota, junto con
+    // cuantas habia en vuelo a la vez: es lo unico que deja ver el tope de concurrencia
+    // y un reintento en bucle.
+    const pedidasCanales = [];
+    const tiemposCanales = [];
+    let canalesEnVuelo = 0, canalesMaxEnVuelo = 0;
+    // `listados` contesta a `web.kick.com/api/v1/livestreams?category_id=<id>…`, el
+    // listado de directos de un juego: `{ <id>: [pagina0, pagina1, …] }`, cada pagina una
+    // lista de `{ s: slug, v: espectadores }`, o un NUMERO para contestar con ese status.
+    // El cursor es `p<n>` y la ultima pagina no lo trae, como Kick. Se anotan en las
+    // mismas peticiones como `listado:<id>:<n>`.
+    const fetchKick = async (u) => {
         const href = String(u && u.url ? u.url : u);
+        if (href.includes('/api/v1/livestreams')) {
+            const q = new URL(href).searchParams;
+            const cat = q.get('category_id');
+            const n = q.get('after') ? Number(q.get('after').slice(1)) : 0;
+            pedidasCanales.push('listado:' + cat + ':' + n);
+            tiemposCanales.push(Date.now());
+            await new Promise(r => setTimeout(r, 50));
+            const paginas = listados && cat in listados ? listados[cat] : 404;
+            if (typeof paginas === 'number') return { ok: false, status: paginas, clone() { return this; }, json: async () => ({}) };
+            const pagina = paginas[n] || [];
+            const cuerpo = { data: {
+                livestreams: pagina.map((x, i) => ({ id: cat + '-' + n + '-' + i, viewer_count: x.v, channel: { id: i, slug: x.s, username: x.s } })),
+                pagination: n + 1 < paginas.length ? { next_cursor: 'p' + (n + 1) } : {} }, message: 'Success' };
+            return { ok: true, status: 200, clone() { return this; }, json: async () => cuerpo };
+        }
+        const mc = href.match(/\/api\/v2\/channels\/([^/?#]+)(\/livestream)?/);
+        if (mc) {
+            const slug = decodeURIComponent(mc[1]);
+            const ligera = !!mc[2];
+            pedidasCanales.push(ligera ? slug : slug + '#completo');
+            tiemposCanales.push(Date.now());
+            canalesEnVuelo++;
+            canalesMaxEnVuelo = Math.max(canalesMaxEnVuelo, canalesEnVuelo);
+            await new Promise(r => setTimeout(r, 50));
+            canalesEnVuelo--;
+            const tabla = ligera ? canalesApi : canalesApiCompleto;
+            const resp = tabla && slug in tabla ? tabla[slug] : 404;
+            const ok = typeof resp !== 'number';
+            return { ok, status: ok ? 200 : resp, clone() { return this; }, json: async () => resp };
+        }
         const isProgress = href.includes('/api/v1/drops/progress');
         const isChallenges = href.includes('/api/v1/gamification/challenges');
         const payload = isChallenges ? (challenges || [])
@@ -186,6 +233,7 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             json: async () => ({ data: payload })
         };
     };
+    w.fetch = fetchKick;
 
     // jsdom no implementa scrollIntoView. Se define para anotar A QUE se hizo scroll.
     //
@@ -252,6 +300,23 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
         w.addEventListener('load', () => res(), { once: true });
     });
 
+    // `intervaloManual` captura los setInterval de ESE retardo en vez de programarlos
+    // (`canales.intervalos`, cada uno con disparar() y `vivo`, que pasa a false al
+    // cancelarlo el script). Para el refresco del dialogo de canales, de 60 s.
+    const intervalos = [];
+    if (intervaloManual !== null) {
+        const realSet = w.setInterval.bind(w), realClear = w.clearInterval.bind(w);
+        w.setInterval = (fn, ms, ...rest) => {
+            if (ms !== intervaloManual) return realSet(fn, ms, ...rest);
+            const it = { id: 'manual-' + intervalos.length, vivo: true, disparar: () => fn(...rest) };
+            intervalos.push(it);
+            return it.id;
+        };
+        w.clearInterval = (id) => {
+            const it = intervalos.find(x => x.id === id);
+            if (it) it.vivo = false; else realClear(id);
+        };
+    }
     try { w.eval(SCRIPT); } catch (e) { logs.push('THROW en eval: ' + e.stack); }
     // La propia pagina de Kick pide /drops/progress con su Bearer; asi es como el
     // script se enterra de lo reclamado. Se reproduce ese fetch para ejercitar el
@@ -278,6 +343,13 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // El unico `load` que ve el script (ver el comentario largo de arriba): el de jsdom
     // ya paso mientras nadie escuchaba.
     w.dispatchEvent(new w.Event('load'));
+
+    // `dialogo` cuelga del <body> el HTML de un dialogo de Kick a los `dialogoMs`, como
+    // lo monta Radix (portal fuera del <main>). Es el de «Más detalles» con su pestaña de
+    // canales participantes.
+    if (dialogo) {
+        setTimeout(() => { w.document.body.insertAdjacentHTML('beforeend', dialogo); }, dialogoMs);
+    }
 
     if (lateHtml) {
         setTimeout(() => {
@@ -1027,6 +1099,47 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     };
                     return r;
                 })(),
+                // El dialogo de canales: cada fila con su marca y el `order` que le
+                // puso el script, en el orden del DOM (que no se toca) y en el que se ve.
+                canales: (() => {
+                    const dlg = d.querySelector('[role="dialog"]');
+                    if (!dlg) return null;
+                    const filas = Array.from(dlg.querySelectorAll('[data-fila-canal]')).map(f => {
+                        const b = f.querySelector('.kick-live-badge');
+                        return {
+                            slug: f.getAttribute('data-fila-canal'),
+                            order: f.style.order,
+                            marca: b ? b.textContent : null,
+                            estado: b ? b.getAttribute('data-live') : null,
+                            aviso: b ? (b.getAttribute('title') || '') : null,
+                            marcas: f.querySelectorAll('.kick-live-badge').length
+                        };
+                    });
+                    const lista = dlg.querySelector('[data-lista-canales]');
+                    const visto = filas.slice().sort((a, b) => (+a.order || 0) - (+b.order || 0)).map(f => f.slug);
+                    return {
+                        filas, visto,
+                        display: lista ? lista.style.display : null,
+                        ordenFrase: (dlg.querySelector('[data-frase]') || { style: {} }).style.order || '',
+                        pedidas: pedidasCanales.slice(), maxEnVuelo: canalesMaxEnVuelo,
+                        cuantasPedidas: () => pedidasCanales.length,
+                        tiempos: () => tiemposCanales.slice(),
+                        marcas: () => Array.from(dlg.querySelectorAll('.kick-live-badge')).map(b => b.getAttribute('data-live')),
+                        intervalos,
+                        cerrar: () => dlg.remove(),
+                        visto2: () => Array.from(dlg.querySelectorAll('[data-fila-canal]'))
+                            .sort((a, b) => (+a.style.order || 0) - (+b.style.order || 0))
+                            .map(f => f.getAttribute('data-fila-canal')),
+                        // Gancho vivo: hace lo que React al repintar una fila —le reescribe
+                        // el contenido al enlace— y deja que el observer la vuelva a marcar.
+                        repintarFila: (slug) => {
+                            const a = dlg.querySelector('[data-fila-canal="' + slug + '"] a');
+                            if (a) a.innerHTML = '<img src="x.png" alt=""><span>' + slug + '</span>';
+                        },
+                        releer: () => Array.from(dlg.querySelectorAll('[data-fila-canal]')).map(f =>
+                            f.querySelectorAll('.kick-live-badge').length)
+                    };
+                })(),
                 visibleClaimedCards: Array.from(d.querySelectorAll('.border-outline-decorative'))
                     .filter(n => { for (let e = n; e && e !== d.body; e = e.parentElement) if (e.style && e.style.display === 'none') return false; return true; }).length
             };
@@ -1043,13 +1156,16 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             // que cada caso soltaba su DOM entero al terminar.
             // `dejarAbierta` es para los informes que traen ganchos VIVOS: cerrar ahi les
             // quita el DOM y el test revienta con un TypeError, no con un FALLOS. Los
-            // ganchos son exactamente TRES, y conviene tenerlos apuntados porque no se
+            // ganchos son exactamente CUATRO, y conviene tenerlos apuntados porque no se
             // distinguen del resto del informe mirandolo:
             //
             //   racha.marcarVista()       pulsa el 👁️ del aviso del reto del dia.
             //   <tarjeta>.clickShare()    pulsa el 🔗 de una tarjeta del panel.
             //   botones.pulsar(texto)     pulsa un boton por su texto (y botones.almacen
             //                             relee el GM_getValue de despues).
+            //   canales.repintarFila(s)   reescribe una fila del dialogo de canales como
+            //                             React (y canales.releer() cuenta sus marcas;
+            //                             canales.cerrar() quita el dialogo).
             //
             // Quien pida `dejarAbierta` se queda con el proceso colgado, asi que tiene que
             // salir el mismo (`process.exit`).
