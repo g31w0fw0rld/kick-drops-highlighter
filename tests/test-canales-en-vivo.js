@@ -269,6 +269,24 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok    ' : '  FALLA ') + ms
     comprobar(sueltas(c8).filter(x => !x.includes('#')).length === SLUGS.length - 1 && por8.chibidoki.estado === 'live',
         'los demas, por su ruta suelta y con su estado real: un listado cortado no dice «Desconectado»');
 
+    console.log('\n=== proximas y cerradas: el dialogo de Kick tal cual, sin consultar ===');
+    // Pedido el 2026-10-05: fuera de la ventana de la campaña quien emite no importa, y
+    // cada canal es una peticion. El dialogo se abre desde la pestaña que esta delante, y
+    // esa dice el estado. El CONTROL es todo lo de arriba: el mismo dialogo en
+    // /drops/campaigns SI consulta y marca.
+    for (const ruta of ['coming-soon', 'expired']) {
+        const rx = await run({
+            url: 'https://kick.com/drops/' + ruta, panels: [{ hidden: false, html: '' }],
+            dialogo, dialogoMs: 2500, canalesApi, canalesApiCompleto, apiCampaigns: [campaña(SLUGS, 10)],
+            listados: { 10: [[{ s: 'chibidoki', v: 1200 }]] }, waitMs: 6000, dejarAbierta: true
+        });
+        const cx = rx.canales;
+        console.log(`  ${ruta}: peticiones`, JSON.stringify(cx && cx.pedidas), '| marcas', JSON.stringify(cx && cx.marcas()));
+        comprobar(!!cx, `${ruta}: el dialogo esta montado`);
+        comprobar(!!cx && cx.pedidas.length === 0, `${ruta}: ninguna peticion de directo, ni listado ni canal a canal`);
+        comprobar(!!cx && cx.marcas().length === 0, `${ruta}: y ninguna marca en las filas`);
+    }
+
     console.log(fallos ? `\n${fallos} fallo(s) — FALLOS` : '\ntodo en verde');
     process.exit(fallos ? 1 : 0);
 })();
