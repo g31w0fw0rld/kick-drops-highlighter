@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.26
+// @version      1.3.27
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.26";
+    const SCRIPT_VERSION = "1.3.27";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -3291,8 +3291,21 @@
 
         // Ganado y sin reclamar. Mismo criterio de "sin datos, null" que el reclamado:
         // un drop no marcado no es un drop del que se sepa que no esta listo.
+        //
+        // Y NUNCA en una campaña que aun no abrio. El 🎁 dice «pulsa y es tuyo», y en
+        // proximas no hay nada que pulsar: Kick no deja reclamar antes del arranque.
+        // Reportado el 2026-10-15 con «Counter-Strike 2 - Stake Pulse» en proximas,
+        // con varios tickets en naranja y 🎁. No se sabe cual de los dos caminos lo
+        // mete en el indice —que /drops/progress traiga la edicion proxima con
+        // progreso, o que comparta ids de recompensa con una edicion anterior, que es
+        // lo que hace una campaña semanal—, y por eso el corte va aqui y no al montar
+        // el indice: aqui cubre los dos. Lo que decide es la fecha del propio tramo
+        // (`starts_at`, que cae a la de la campaña), no la pestaña en la que se pinta:
+        // una proxima vista desde abiertas sigue sin poder reclamarse.
         function _isDropEarned(drop) {
             if (!_progressInventoryReady) return null;
+            const empieza = Date.parse((drop && drop.starts_at) || '');
+            if (Number.isFinite(empieza) && empieza > Date.now()) return false;
             return !!(drop && drop.rewardId && _earnedRewardIds.has(drop.rewardId));
         }
 
@@ -5748,7 +5761,70 @@
             // pagina y filas de progreso). Va aqui y no en el arranque porque hasta
             // que el panel existe no hay ningun control con `title` que servir.
             _initOwnTooltips();
+            _iniciarCapaBajoModales();
+            _ajustarCapaPanel();
             return results;
+        }
+
+        // EL PANEL SE METE DEBAJO DE LOS MODALES DE KICK, no encima.
+        //
+        // Reportado el 2026-10-15, en movil y en escritorio: con «Mas detalles» o el
+        // cofre abiertos, el velo oscuro de Kick cubria la pagina pero no el panel, que
+        // seguia brillando por encima y en movil tapaba parte del modal. Medido ese
+        // mismo dia en escritorio con «Mas detalles»: el dialogo de Radix y su velo van
+        // con `z-index: 601` (la clase `z-dialog`), los dos colgados de <body>, y el
+        // panel con 9999. Radix ya lo marca `aria-hidden` y le quita los clics; lo
+        // unico que faltaba era el orden de las capas.
+        //
+        // No se copia el 601: es un token de Kick y puede cambiar. Se lee del modal
+        // abierto y el panel se pone UNA capa por debajo, asi que el velo lo sombrea
+        // como al resto de la pagina, y sigue por encima de todo lo demas. Al cerrarse
+        // vuelve a 9999.
+        //
+        // Se cuentan los dialogos de Radix (escritorio) y los drawers de vaul (movil, ver
+        // la nota del cofre), y solo ABIERTOS: los dos dicen su estado en `data-state`.
+        // Kick deja montado y oculto el centro de privacidad de OneTrust con
+        // `role="dialog"` y sin `data-state`, asi que ese no mueve nada.
+        const PANEL_Z = 9999;
+        function _capaDeModalAbierto() {
+            let minima = Infinity;
+            const abiertos = document.querySelectorAll(
+                '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [data-vaul-overlay][data-state="open"]');
+            for (const el of abiertos) {
+                if (el.closest('#kick-drops-panel')) continue;
+                // La capa que cuenta es la del antepasado mas alto que la fija: es la
+                // que compite con el panel, que cuelga de <body>.
+                let z = NaN;
+                for (let e = el; e && e !== document.body; e = e.parentElement) {
+                    const n = parseInt(getComputedStyle(e).zIndex, 10);
+                    if (Number.isFinite(n)) z = n;
+                }
+                if (Number.isFinite(z) && z < minima) minima = z;
+            }
+            return minima;
+        }
+
+        function _ajustarCapaPanel() {
+            // Sin documento no hay nada que ajustar: pasa cuando el arnes de pruebas
+            // cierra la ventana y el desmontaje del <body> despierta al observer.
+            if (!document) return;
+            const panel = document.getElementById('kick-drops-panel');
+            if (!panel) return;
+            const capa = _capaDeModalAbierto();
+            const z = String(capa <= PANEL_Z ? Math.max(0, capa - 1) : PANEL_Z);
+            // Solo si cambia: escribir el mismo valor tambien cuenta como mutacion.
+            if (panel.style.zIndex !== z) panel.style.zIndex = z;
+        }
+
+        // Solo `childList` de <body> y sin subtree: Radix y vaul montan sus portales
+        // ahi, y el estilo del panel —que es lo que se toca— no despierta a este
+        // observer. Se mide en el mismo callback, sin esperar a un frame: el observer ya
+        // corre con el portal montado, y su `z-index` sale de las clases, no del layout.
+        let _capaObs = null;
+        function _iniciarCapaBajoModales() {
+            if (_capaObs || !document.body) return;
+            _capaObs = new MutationObserver(_ajustarCapaPanel);
+            _capaObs.observe(document.body, { childList: true });
         }
 
         // =============================================

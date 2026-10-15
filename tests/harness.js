@@ -125,7 +125,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -347,8 +347,18 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // `dialogo` cuelga del <body> el HTML de un dialogo de Kick a los `dialogoMs`, como
     // lo monta Radix (portal fuera del <main>). Es el de «Más detalles» con su pestaña de
     // canales participantes.
+    //
+    // `dialogoFueraMs` lo quita a esa hora, que es lo que hace Radix al cerrarlo: el
+    // portal sale del <body>. Lo usa el test de la capa del panel, que tiene que ver el
+    // antes, el durante y el despues.
     if (dialogo) {
-        setTimeout(() => { w.document.body.insertAdjacentHTML('beforeend', dialogo); }, dialogoMs);
+        let montados = [];
+        setTimeout(() => {
+            const antes = new Set(w.document.body.children);
+            w.document.body.insertAdjacentHTML('beforeend', dialogo);
+            montados = Array.from(w.document.body.children).filter(n => !antes.has(n));
+        }, dialogoMs);
+        if (dialogoFueraMs != null) setTimeout(() => montados.forEach(n => n.remove()), dialogoFueraMs);
     }
 
     if (lateHtml) {
@@ -377,6 +387,9 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // rejilla colandose en OTRA pestaña vive hasta que se vuelve a reclamados, y para
     // entonces el informe final ya la ve donde tiene que estar.
     const foto = () => Object.assign(banner(), {
+        // El `z-index` del panel, para ver que se mete debajo de un modal de Kick
+        // abierto y que vuelve a su sitio al cerrarse.
+        panelZ: (w.document.getElementById('kick-drops-panel') || { style: {} }).style.zIndex || null,
         rejillas: w.document.querySelectorAll('#kick-claimed-inventory').length,
         // Los filtros por juego de Kick (All / Rust / PUBG…). Se cuentan los que se ven,
         // porque el arreglo es esconderlos SOLO en reclamados: en cerradas siguen
