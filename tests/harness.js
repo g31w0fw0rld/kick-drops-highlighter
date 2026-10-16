@@ -93,9 +93,19 @@ function page({ url, panels, cofre }) {
     // posicion, con un menu inventado de dos filas no se notaria.
     const menuMovil = () => readFixture('fixture-menu-movil.html');
     const avatar = () => `<div class="fixed top-0 flex w-full" id="kick-barra-falsa">${readFixture('fixture-navbar-account.html')}</div>`;
+    //   'movil-real'    lo que hay de verdad en un movil (2026-10-15, Galaxy A55 simulado):
+    //                   el avatar Y el boton del cofre de escritorio, montado pero oculto.
+    //                   Pulsar el oculto abre el dialogo de ESCRITORIO; el bueno es el menu.
+    //                   Que se vea uno y no el otro lo fija `getClientRects`, mas abajo.
+    // El video del boton oculto dice lo mismo que el reto: Kick lo mantiene al dia aunque
+    // no se vea, y el script le cree a el antes que al reto (ver _dailyRewardAvailable).
+    const botonEscritorio = (disponible) => `<button aria-haspopup="dialog" aria-label="Daily reward" id="kick-cofre-escritorio">
+        <video src="https://static.kick.com/rewards/${disponible ? 'reward-available-CTA' : 'reward-countdown'}.webm"></video></button>`;
     const barra = !cofre ? '' :
         cofre === 'movil' ? avatar() + menuMovil() :
-        cofre === 'movil-cerrado' ? avatar() : `
+        cofre === 'movil-cerrado' ? avatar() :
+        (cofre === 'movil-real' || cofre === 'movil-real-disponible')
+            ? avatar() + `<div class="hidden lg:flex">${botonEscritorio(cofre === 'movil-real-disponible')}</div>` : `
     <div class="fixed top-0 flex w-full" id="kick-barra-falsa">
       <button aria-haspopup="dialog" aria-label="Daily reward">
         <video src="https://static.kick.com/rewards/${cofre === 'disponible' ? 'reward-available-CTA' : 'reward-countdown'}.webm"></video>
@@ -125,7 +135,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, dialogoRadix = false, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, dialogoRadix = false, dialogoEn = null, quitar = null, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -351,13 +361,20 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // `dialogoFueraMs` lo quita a esa hora, que es lo que hace Radix al cerrarlo: el
     // portal sale del <body>. Lo usa el test de la capa del panel, que tiene que ver el
     // antes, el durante y el despues.
+    // `quitar` desmonta lo que case con `sel` a los `ms`: es lo que hace Kick con su barra
+    // al abrir la busqueda en movil, que la cambia por otra.
+    if (quitar) setTimeout(() => w.document.querySelectorAll(quitar.sel).forEach(n => n.remove()), quitar.ms);
     const clicsDialogo = [];
     if (dialogo) {
         let montados = [];
         setTimeout(() => {
-            const antes = new Set(w.document.body.children);
-            w.document.body.insertAdjacentHTML('beforeend', dialogo);
-            montados = Array.from(w.document.body.children).filter(n => !antes.has(n));
+            // `dialogoEn` lo monta DENTRO de un contenedor que ya existia, y no colgado de
+            // <body>: es lo que se sospecha del portal de pantalla completa de Kick en movil
+            // (2026-10-15), donde a <body> no se le añade nada.
+            const host = (dialogoEn && w.document.querySelector(dialogoEn)) || w.document.body;
+            const antes = new Set(host.children);
+            host.insertAdjacentHTML('beforeend', dialogo);
+            montados = Array.from(host.children).filter(n => !antes.has(n));
             // `dialogoRadix` hace lo que Radix al pulsar un boton del dialogo: lo cierra
             // y saca el portal. Y apunta el clic, que es lo que el test quiere saber —el
             // arnes no ejecuta `onclick` del HTML (runScripts: 'outside-only')—.
@@ -597,7 +614,14 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // es como lo reconoce el script sin depender del idioma. Y el menu se queda ABIERTO
     // debajo, como lo deja Kick.
     if (cofre) {
-        const esMovil = cofre === 'movil' || cofre === 'movil-cerrado';
+        const esMovil = cofre === 'movil' || cofre === 'movil-cerrado' || /^movil-real/.test(cofre);
+        // En 'movil-real' el avatar se ve y el boton de escritorio no. jsdom no hace layout
+        // y `getClientRects` devuelve vacio para todo, asi que se le dice: es la afirmacion
+        // sobre el navegador que este modo prueba, y nada mas.
+        if (/^movil-real/.test(cofre)) {
+            const av = w.document.querySelector('button[data-testid="navbar-account"]');
+            if (av) av.getClientRects = () => [{ width: 32, height: 32 }];
+        }
         const ICONO_COFRE = 'M6 7.33301H8.63965V9.33301L11 10.666L13.333 9.33301V7.33301H16V14.666H6V7.33301Z' +
             'M15.1201 2.41602L16 3.33301V5.33301H6V3.33301L5.12012 2.41602L4.08008 1.33301H14L15.1201 2.41602Z';
         w.document.addEventListener('click', (e) => {
@@ -625,7 +649,9 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 const dlg = w.document.createElement('div');
                 dlg.setAttribute('role', 'dialog');
                 dlg.setAttribute('data-state', 'open');
-                if (esMovil) dlg.setAttribute('data-vaul-drawer-direction', 'bottom');
+                // El boton de escritorio abre el dialogo de escritorio aunque se este en
+                // movil: es lo que se vio en 'movil-real'. Solo la fila del menu abre el drawer.
+                if (esMovil && b.getAttribute('aria-haspopup') !== 'dialog') dlg.setAttribute('data-vaul-drawer-direction', 'bottom');
                 dlg.innerHTML =
                     '<svg viewBox="0 0 16 16"><path d="' + ICONO_COFRE + '"></path></svg>' +
                     '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>' +
@@ -1042,6 +1068,8 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 // del automatico: el automatico cierra el modal y el de la tarjeta lo deja,
                 // que es el resultado que se ha pedido al pulsar.
                 dialogoAbierto: !!d.querySelector('div[role="dialog"][data-state="open"]'),
+                // Si lo abierto es el drawer de movil o el dialogo de escritorio.
+                dialogoDrawer: !!d.querySelector('div[role="dialog"][data-state="open"][data-vaul-drawer-direction]'),
                 filtrosKickVisibles: Array.from(d.querySelectorAll('main [role="group"]'))
                     .filter(g => g.querySelector('[role="radio"]'))
                     .filter(g => { for (let e = g; e && e !== d.body; e = e.parentElement) { if (e.style && e.style.display === 'none') return false; } return true; }).length,

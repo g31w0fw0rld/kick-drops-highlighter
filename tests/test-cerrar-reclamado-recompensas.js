@@ -46,6 +46,19 @@ const caso = (url, casilla) => run({
     console.log('campañas + casilla:', JSON.stringify(otraPestaña.clicsDialogo));
     if (otraPestaña.clicsDialogo.length !== 0) fallos.push('en la pestaña de campañas se cerro el dialogo');
 
+    // EN MOVIL (2026-10-15) no se cerraba. El dialogo es el mismo, pero Kick lo monta con
+    // su portal de pantalla completa, y si va dentro de un contenedor que ya estaba, a
+    // <body> no se le añade nada. Aqui va dentro de un contenedor del propio volcado.
+    const enPortal = await run({
+        url: 'https://kick.com/drops/rewards',
+        panels: [{ hidden: false, html: '<div id="portal-kick-existente"></div>' }],
+        waitMs: 9000,
+        dialogo: reclamado, dialogoMs: 4000, dialogoRadix: true, dialogoEn: '#portal-kick-existente',
+        seed: { kick_show_hide_inventory_expired: true }
+    });
+    console.log('dentro de un portal ya montado:', JSON.stringify(enPortal.clicsDialogo), 'abierto al final:', enPortal.dialogoAbiertoAlFinal);
+    if (enPortal.clicsDialogo.length !== 1) fallos.push('montado dentro de un portal existente, el boton se pulso ' + enPortal.clicsDialogo.length + ' veces (se esperaba 1)');
+
     console.log(fallos.length ? 'FALLOS: ' + fallos.join(' | ') : 'TODO OK');
     process.exit(fallos.length ? 1 : 0);
 })().catch(e => { console.error('FALLO', e); process.exit(1); });

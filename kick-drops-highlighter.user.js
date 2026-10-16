@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.28
+// @version      1.3.29
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.28";
+    const SCRIPT_VERSION = "1.3.29";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -5775,7 +5775,7 @@
             return results;
         }
 
-        // EL PANEL SE METE DEBAJO DE LOS MODALES DE KICK, no encima.
+        // EL PANEL SE METE DEBAJO DE LOS MODALES Y LOS MENUS DE KICK, no encima.
         //
         // Reportado el 2026-10-15, en movil y en escritorio: con «Mas detalles» o el
         // cofre abiertos, el velo oscuro de Kick cubria la pagina pero no el panel, que
@@ -5797,8 +5797,14 @@
         const PANEL_Z = 9999;
         function _capaDeModalAbierto() {
             let minima = Infinity;
+            // Y los MENUS, que van aun mas arriba: el de la cuenta y el de «Obtén KICKs» son
+            // poppers de Radix colgados de <body> con `z-dropdown` = 701 (medido el
+            // 2026-10-15), por encima de los dialogos. Se exige el contenido en
+            // `data-state="open"`: los tooltips de Radix usan el mismo popper con
+            // `delayed-open`, y por un tooltip no hay que mover nada.
             const abiertos = document.querySelectorAll(
-                '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [data-vaul-overlay][data-state="open"]');
+                '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [data-vaul-overlay][data-state="open"], ' +
+                '[data-radix-popper-content-wrapper] > [data-state="open"]');
             for (const el of abiertos) {
                 if (el.closest('#kick-drops-panel')) continue;
                 // La capa que cuenta es la del antepasado mas alto que la fija: es la
@@ -5813,14 +5819,41 @@
             return minima;
         }
 
+        // Y LA BASE ES LA BARRA DE KICK, no 9999. Reportado el 2026-10-15 en movil: el menu
+        // de la cuenta y la busqueda se abrian por debajo del panel. Medido ese dia con un
+        // iframe de 380 px: el menu movil es un `.z-modal` (501) DENTRO de la barra, que es
+        // `nav.z-navbar` con 301 y la que compite con el panel; la busqueda movil es otra
+        // barra, `nav` con `z-[402]`. Con los dialogos (601) y los menus de escritorio
+        // (701), todo lo que Kick abre desde arriba vive de 301 para arriba.
+        //
+        // Asi que el panel se pone una capa por debajo de la barra: queda por encima del
+        // contenido de la pagina y por debajo de cualquier cosa que Kick abra. Se lee de la
+        // barra y no se copia. Sin barra a la vista —el arnes de pruebas— la base sigue
+        // siendo 9999, y lo de los modales de arriba se queda de red por si algun dia Kick
+        // abre algo por debajo de su barra.
+        //
+        // Y SE RECUERDA. Al abrir la busqueda en movil Kick DESMONTA la barra normal y
+        // monta la de busqueda en su lugar (por eso en la medicion la barra vieja salio
+        // 0x0: ya no estaba). Sin memoria, justo con la busqueda abierta no habia barra
+        // que leer y el panel volvia a 9999, encima de los resultados —reportado el mismo
+        // dia, ya con esto puesto—. La base vista una vez vale mientras dure la pagina.
+        let _baseRecordada = null;
+        function _baseDelPanel() {
+            const barra = document.querySelector('nav.z-navbar') || document.querySelector('nav.fixed.top-0');
+            const n = barra ? parseInt(getComputedStyle(barra).zIndex, 10) : NaN;
+            if (Number.isFinite(n) && n > 1) _baseRecordada = Math.min(PANEL_Z, n - 1);
+            return _baseRecordada !== null ? _baseRecordada : PANEL_Z;
+        }
+
         function _ajustarCapaPanel() {
             // Sin documento no hay nada que ajustar: pasa cuando el arnes de pruebas
             // cierra la ventana y el desmontaje del <body> despierta al observer.
             if (!document) return;
             const panel = document.getElementById('kick-drops-panel');
             if (!panel) return;
+            const base = _baseDelPanel();
             const capa = _capaDeModalAbierto();
-            const z = String(capa <= PANEL_Z ? Math.max(0, capa - 1) : PANEL_Z);
+            const z = String(capa <= base ? Math.max(0, capa - 1) : base);
             // Solo si cambia: escribir el mismo valor tambien cuenta como mutacion.
             if (panel.style.zIndex !== z) panel.style.zIndex = z;
         }
@@ -5857,6 +5890,14 @@
                     if (!boton.isConnected || dlg.getAttribute('data-state') !== 'open') return;
                     if (!cleanExpiredInventoryFlag) return;
                     boton.click();
+                    // La marca se quita SOLO si el dialogo se cerro de verdad: si Kick reusa
+                    // el nodo para el siguiente «¡Reclamado!», ese tambien se cierra; si el
+                    // clic no lo cerro, la marca se queda y no se pulsa en bucle.
+                    setTimeout(() => {
+                        if (!dlg.isConnected || dlg.getAttribute('data-state') !== 'open') {
+                            dlg.removeAttribute('data-kick-drops-autocierre');
+                        }
+                    }, 1000);
                 }, REVELACION_CIERRE_MS);
             }
         }
@@ -5873,6 +5914,14 @@
                 _cerrarRevelacionDeRecompensa();
             });
             _capaObs.observe(document.body, { childList: true });
+            // Y el «¡Reclamado!» ademas por reloj. Reportado el 2026-10-15 en movil: no se
+            // cerraba. El dialogo es el mismo que en escritorio, pero Kick lo monta con su
+            // portal de pantalla completa (`data-fullscreen-portal-owner`), y si lo mete en
+            // un contenedor que ya estaba, a <body> no se le añade nada y este observer —que
+            // no mira el subarbol, a proposito— no se entera. Una consulta por segundo, y
+            // solo hace algo en /drops/rewards con la casilla puesta: fuera de ahi sale en
+            // la primera linea.
+            setInterval(_cerrarRevelacionDeRecompensa, 1000);
         }
 
         // =============================================
@@ -10388,13 +10437,15 @@
         function _claimDailyRewardNow() {
             if (_dailyRewardBusy) return false;
             const chestBtn = _findDailyRewardButton();
-            if (!chestBtn) return false;
+            if (!chestBtn && !document.querySelector(KICK_ACCOUNT_BTN)) return false;
 
             _dailyRewardBusy = true; // que el ciclo automatico no se meta en medio
-            try { chestBtn.click(); } catch (e) { _dailyRewardBusy = false; return false; }
+            // Por el mismo camino que la baldosa: en movil, por el menu (ver
+            // _openDailyRewardModal), para que salga el drawer y no el dialogo de escritorio.
+            if (!_openDailyRewardModal()) { _dailyRewardBusy = false; return false; }
 
             let attempts = 0;
-            const maxAttempts = 12; // ~3s
+            const maxAttempts = 24; // ~6 s: en movil hay que sumarle abrir el menu
             const poll = setInterval(() => {
                 attempts++;
                 const dialog = _getOpenRewardDialog();
@@ -10447,23 +10498,46 @@
         // Kick por su cuenta: en ese mismo volcado el menu y el drawer estan abiertos a
         // la vez. Cerrarlo por debajo seria inventarse un comportamiento que el sitio no
         // tiene, y encima con el riesgo de que el Escape se llevara el modal.
+        //
+        // EN MOVIL, POR EL MENU AUNQUE EL BOTON DE ESCRITORIO ESTE EN EL DOM. Reportado el
+        // 2026-10-15 con dos capturas en un Galaxy A55 simulado: Kick deja montado —y
+        // oculto— el boton del cofre de la barra de escritorio, `_findDailyRewardButton`
+        // lo devolvia por no verse ninguno, y al pulsarlo Kick abria su dialogo de
+        // ESCRITORIO a pantalla completa —«Reclamar tus recompensas», con hueco negro
+        // debajo— en vez del drawer de abajo que abre el menu, que es el del movil.
+        //
+        // Asi que el boton directo solo se pulsa si SE VE. Si no se ve ninguno y el avatar
+        // de la cuenta si, es el movil y se va por el menu, como lo haria el usuario. Si no
+        // se ve ni eso —jsdom, que no hace layout—, se pulsa el que haya, que es lo de antes.
         function _openDailyRewardModal() {
             if (_getOpenRewardDialog()) return true;
 
             const directo = _findDailyRewardButton();
-            if (directo) {
+            const visible = (el) => !!(el && el.getClientRects().length);
+            const cuenta = document.querySelector(KICK_ACCOUNT_BTN);
+            if (directo && (visible(directo) || !visible(cuenta))) {
                 try { directo.click(); } catch (e) { return false; }
                 return true;
             }
 
-            const cuenta = document.querySelector(KICK_ACCOUNT_BTN);
             if (!cuenta) return false;
             try { cuenta.click(); } catch (e) { return false; }
 
+            // Lo que se espera aqui es LA FILA del menu, no cualquier cofre: el boton de
+            // escritorio oculto sigue en el DOM y `_findDailyRewardButton` lo preferiria
+            // mientras la fila no se pinte. La fila es la que no lleva `aria-haspopup`.
+            const filaDelMenu = () => {
+                for (const p of document.querySelectorAll('svg path[d^="M6 7.33301"]')) {
+                    const b = p.closest('button');
+                    if (b && b.getAttribute('aria-haspopup') !== 'dialog'
+                        && !b.closest('#kick-drops-panel, #kick-claimed-inventory')) return b;
+                }
+                return null;
+            };
             let intentos = 0;
             const espera = setInterval(() => {
                 intentos++;
-                const fila = _findDailyRewardButton();
+                const fila = filaDelMenu();
                 if (fila) {
                     clearInterval(espera);
                     try { fila.click(); } catch (e) { /* si no se deja, no hay nada que hacer */ }
