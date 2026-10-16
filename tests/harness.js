@@ -125,7 +125,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, dialogoRadix = false, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -351,12 +351,22 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // `dialogoFueraMs` lo quita a esa hora, que es lo que hace Radix al cerrarlo: el
     // portal sale del <body>. Lo usa el test de la capa del panel, que tiene que ver el
     // antes, el durante y el despues.
+    const clicsDialogo = [];
     if (dialogo) {
         let montados = [];
         setTimeout(() => {
             const antes = new Set(w.document.body.children);
             w.document.body.insertAdjacentHTML('beforeend', dialogo);
             montados = Array.from(w.document.body.children).filter(n => !antes.has(n));
+            // `dialogoRadix` hace lo que Radix al pulsar un boton del dialogo: lo cierra
+            // y saca el portal. Y apunta el clic, que es lo que el test quiere saber —el
+            // arnes no ejecuta `onclick` del HTML (runScripts: 'outside-only')—.
+            if (dialogoRadix) {
+                montados.forEach(n => n.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+                    clicsDialogo.push(b.getAttribute('aria-label') || b.textContent.trim());
+                    montados.forEach(m => m.remove());
+                })));
+            }
         }, dialogoMs);
         if (dialogoFueraMs != null) setTimeout(() => montados.forEach(n => n.remove()), dialogoFueraMs);
     }
@@ -892,6 +902,8 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
             const informe = {
                 logs,
                 snaps,
+                clicsDialogo,
+                dialogoAbiertoAlFinal: !!w.document.querySelector('[role="dialog"][data-state="open"]'),
                 medidor,
                 solapaDelante,
                 // Para diagnosticar los ganchos que pulsan cosas: que botones hay de

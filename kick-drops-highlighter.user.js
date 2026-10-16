@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.27
+// @version      1.3.28
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.27";
+    const SCRIPT_VERSION = "1.3.28";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -3861,6 +3861,15 @@
 
         function setInertOnBodyChildrenExcept(overlay, inert) {
             if (inert) {
+                // El foco se suelta ANTES de ocultar: si se queda en un boton del panel
+                // —el que abrio este modal—, Chrome bloquea el `aria-hidden` del panel
+                // («Blocked aria-hidden on an element because its descendant retained
+                // focus»). Visto en la consola el 2026-10-15. El modal enfoca su propio
+                // boton un instante despues.
+                const foco = document.activeElement;
+                if (foco && foco !== document.body && !overlay.contains(foco) && typeof foco.blur === 'function') {
+                    foco.blur();
+                }
                 const saved = [];
                 Array.from(document.body.children).forEach((el) => {
                     if (el === overlay) return;
@@ -5816,6 +5825,42 @@
             if (panel.style.zIndex !== z) panel.style.zIndex = z;
         }
 
+        // EL «¡RECLAMADO!» DE LA PESTAÑA RECOMPENSAS, CERRADO SOLO CON LA CASILLA PUESTA.
+        //
+        // Pedido el 2026-10-15 con captura: en /drops/rewards, al cobrar, Kick tapa la
+        // pantalla con un dialogo a pantalla completa —un video en bucle, «¡Reclamado!» y
+        // la recompensa— que solo se va con su X. Con la reclamacion automatica puesta
+        // nadie esta mirando, asi que el script lo cierra el mismo, y solo ahi: sin la
+        // casilla, o en otra pestaña, el dialogo se queda como lo pinta Kick.
+        //
+        // Se reconoce sin depender del idioma: es un dialogo de Radix abierto con el
+        // video `/rewards/open-reveal` dentro (el `aria-label` del boton dice «Salir» en
+        // español y cambia con el idioma). El boton es el que lleva el icono `Cross` del
+        // sistema de diseño de Kick; si no se encuentra, no se pulsa nada.
+        //
+        // Se espera un momento antes de pulsar, para que la recompensa llegue a verse si
+        // alguien SI estaba mirando, y se marca el dialogo para no pulsarlo dos veces:
+        // el observer se despierta con cada portal que monta o desmonta Kick.
+        const REVELACION_CIERRE_MS = 1500;
+        function _cerrarRevelacionDeRecompensa() {
+            if (!document || !cleanExpiredInventoryFlag) return;
+            if (!/^\/drops\/rewards(\/|$)/.test(location.pathname)) return;
+            for (const video of document.querySelectorAll('[role="dialog"][data-state="open"] video[src*="/rewards/open-reveal"]')) {
+                const dlg = video.closest('[role="dialog"]');
+                if (!dlg || dlg.hasAttribute('data-kick-drops-autocierre')) continue;
+                const icono = dlg.querySelector(':scope > button svg[data-ds-icon="Cross"]');
+                const boton = icono && icono.closest('button');
+                if (!boton) continue;
+                dlg.setAttribute('data-kick-drops-autocierre', '1');
+                setTimeout(() => {
+                    // Puede haberlo cerrado el usuario, o haber quitado la casilla, entre medias.
+                    if (!boton.isConnected || dlg.getAttribute('data-state') !== 'open') return;
+                    if (!cleanExpiredInventoryFlag) return;
+                    boton.click();
+                }, REVELACION_CIERRE_MS);
+            }
+        }
+
         // Solo `childList` de <body> y sin subtree: Radix y vaul montan sus portales
         // ahi, y el estilo del panel —que es lo que se toca— no despierta a este
         // observer. Se mide en el mismo callback, sin esperar a un frame: el observer ya
@@ -5823,7 +5868,10 @@
         let _capaObs = null;
         function _iniciarCapaBajoModales() {
             if (_capaObs || !document.body) return;
-            _capaObs = new MutationObserver(_ajustarCapaPanel);
+            _capaObs = new MutationObserver(() => {
+                _ajustarCapaPanel();
+                _cerrarRevelacionDeRecompensa();
+            });
             _capaObs.observe(document.body, { childList: true });
         }
 
