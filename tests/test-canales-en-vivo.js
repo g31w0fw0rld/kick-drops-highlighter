@@ -46,7 +46,9 @@ const dialogo = `
 
 // La forma de `/livestream`, medida en el navegador el 2026-10-03: `data` null sin directo
 // y, con directo, un objeto con `viewers` (no `viewer_count`, que es el de la ruta completa).
-const vivo = (n) => ({ data: { id: 1, slug: 'x', viewers: n, category: { slug: 'minecraft' } } });
+// `category` con su `id`, como la da Kick (medido el 2026-10-17: {id, name, slug, tags,
+// parent_category}); por defecto la 10, la de la campaña de Minecraft de estos casos.
+const vivo = (n, cat = 10) => ({ data: { id: 1, slug: 'x', viewers: n, category: { id: cat, slug: 'minecraft' } } });
 const apagado = { data: null };
 const canalesApi = {
     solrac: apagado,
@@ -199,9 +201,10 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok    ' : '  FALLA ') + ms
 
     console.log('\n=== con categoria: el listado del juego en vez de canal a canal ===');
     // La campaña trae `category.id`, y el listado de Minecraft (dos paginas) resuelve los
-    // ocho canales sin una sola peticion suelta: los que salen, en vivo con sus
-    // espectadores; los que no, «Desconectado» —aunque la ruta suelta dijera otra cosa,
-    // que es justo lo que se decidio: si no esta en el juego, no gana el drop—.
+    // ocho canales: los que NO salen, «Desconectado» sin preguntar —aunque la ruta suelta
+    // dijera otra cosa, que es justo lo que se decidio: si no esta en el juego, no gana
+    // el drop—; los que salen, confirmados con su propio directo, que es el que sabe la
+    // categoria de AHORA (desde el 2026-10-17, ver el caso de MOON Trading abajo).
     const minecraft = { 10: [
         [{ s: 'aquino', v: 35000 }, { s: 'simbionte', v: 8000 }, { s: 'otro1', v: 500 }],
         [{ s: 'westcol', v: 90 }, { s: 'simbionte', v: 80 }, { s: 'otro2', v: 3 }]
@@ -215,10 +218,10 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok    ' : '  FALLA ') + ms
     const por5 = Object.fromEntries(c5.filas.map(f => [f.slug, f]));
     const sueltas = (c) => c.pedidas.filter(x => !x.startsWith('listado:'));
     console.log('  pedidas:', JSON.stringify(c5.pedidas));
-    comprobar(JSON.stringify(c5.pedidas) === JSON.stringify(['listado:10:0', 'listado:10:1']),
-        'dos paginas del listado y ninguna peticion suelta');
-    comprobar(por5.simbionte.estado === 'live' && /^● 8\s?mil$/.test(por5.simbionte.marca),
-        'el que sale, en vivo con los espectadores de su PRIMERA aparicion (8.000, no 80)');
+    comprobar(JSON.stringify(c5.pedidas) === JSON.stringify(['listado:10:0', 'listado:10:1', 'simbionte', 'westcol']),
+        'dos paginas del listado y una confirmacion por cada canal que da en vivo, nada mas');
+    comprobar(por5.simbionte.estado === 'live' && /^● 85\s?mil$/.test(por5.simbionte.marca),
+        'el que sale, en vivo con los espectadores de su propio directo (85 mil), no los del listado');
     comprobar(por5.westcol.estado === 'live', 'tambien los de la segunda pagina');
     comprobar(por5.chibidoki.estado === 'offline' && por5.chibidoki.marca === 'Desconectado',
         'el que no sale en el listado completo, «Desconectado» (aunque la ruta suelta lo diera en vivo)');
@@ -227,8 +230,8 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok    ' : '  FALLA ') + ms
     const antes5 = c5.cuantasPedidas();
     c5.intervalos.filter(i => i.vivo)[0].disparar();
     await new Promise(res => setTimeout(res, 1500));
-    comprobar(c5.cuantasPedidas() - antes5 === 2 && sueltas(c5).length === 0,
-        'el refresco vuelve a pedir el listado (2 paginas) y nada suelto');
+    comprobar(c5.cuantasPedidas() - antes5 === 4 && sueltas(c5).every(x => x === 'simbionte' || x === 'westcol'),
+        'el refresco vuelve a pedir el listado (2 paginas) y solo confirma a los dos en vivo');
 
     console.log('\n=== todos encontrados: no se sigue paginando ===');
     const r6 = await run({
@@ -237,8 +240,12 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok    ' : '  FALLA ') + ms
         dialogoMs: 2500, canalesApi, apiCampaigns: [campaña(['aquino', 'simbionte'], 10)],
         listados: minecraft, waitMs: 5000, dejarAbierta: true
     });
-    comprobar(JSON.stringify(r6.canales.pedidas) === JSON.stringify(['listado:10:0']),
-        'con los dos en la primera pagina, una sola peticion (' + JSON.stringify(r6.canales.pedidas) + ')');
+    comprobar(JSON.stringify(r6.canales.pedidas) === JSON.stringify(['listado:10:0', 'aquino', 'simbionte']),
+        'con los dos en la primera pagina, una sola pagina y sus dos confirmaciones (' + JSON.stringify(r6.canales.pedidas) + ')');
+    // `aquino` no tiene ruta suelta en el arnes: 404. Un canal que no contesta se queda con
+    // lo que dijo el listado, que es mejor dato que «?».
+    const por6 = Object.fromEntries(r6.canales.filas.map(f => [f.slug, f]));
+    comprobar(por6.aquino.estado === 'live', 'y el que no contesta a la confirmacion se queda con lo del listado');
 
     console.log('\n=== el listado falla: canal a canal, sin dar a nadie por desconectado ===');
     const r7 = await run({
@@ -264,10 +271,48 @@ const comprobar = (ok, msg) => { console.log((ok ? '  ok    ' : '  FALLA ') + ms
     const c8 = r8.canales;
     const por8 = Object.fromEntries(c8.filas.map(f => [f.slug, f]));
     comprobar(c8.pedidas.filter(x => x.startsWith('listado:')).length === 20, 'para en 20 paginas');
-    comprobar(por8.simbionte.estado === 'live' && !sueltas(c8).includes('simbionte'),
-        'el que salio en el listado no se vuelve a pedir');
-    comprobar(sueltas(c8).filter(x => !x.includes('#')).length === SLUGS.length - 1 && por8.chibidoki.estado === 'live',
+    comprobar(por8.simbionte.estado === 'live' && sueltas(c8).filter(x => x === 'simbionte').length === 1,
+        'el que salio en el listado se pide una sola vez: su confirmacion');
+    // Siete canal a canal y la confirmacion de simbionte: ocho, uno por canal.
+    comprobar(sueltas(c8).filter(x => !x.includes('#')).length === SLUGS.length && por8.chibidoki.estado === 'live',
         'los demas, por su ruta suelta y con su estado real: un listado cortado no dice «Desconectado»');
+
+    console.log('\n=== el listado dice que emite la categoria, y ya no la emite ===');
+    // Visto el 2026-10-17 en «MOON Trading» (categoria 320, Crypto & Trading): el listado
+    // de la 320 traia a `doge` con 338 espectadores, y su directo —su `/livestream` y su
+    // pagina— decia Overwatch (6). El listado guarda la categoria con la que EMPEZO el
+    // directo. Se marcaba en verde; tiene que salir «Desconectado».
+    const moon = (slugs) => [{ ...campaña(slugs, null), name: 'MOON Trading',
+        category: { id: 320, name: 'Crypto & Trading', slug: 'crypto-and-trading' } }];
+    const MOON = ['doge', 'trader', 'sustain'];
+    const dialogoMoon = dialogo.replace(SLUGS.map(fila).join(''), MOON.map(fila).join(''));
+    const apiMoon = { doge: vivo(277, 6), trader: vivo(40, 320), sustain: apagado };
+    const r9 = await run({
+        url: 'https://kick.com/drops/campaigns', panels: [{ hidden: false, html: '' }],
+        dialogo: dialogoMoon, dialogoMs: 2500, canalesApi: apiMoon, apiCampaigns: moon(MOON),
+        listados: { 320: [[{ s: 'doge', v: 338 }, { s: 'trader', v: 41 }]] }, waitMs: 6000, dejarAbierta: true
+    });
+    const por9 = Object.fromEntries(r9.canales.filas.map(f => [f.slug, f]));
+    console.log('  pedidas:', JSON.stringify(r9.canales.pedidas), '| marcas:', JSON.stringify(r9.canales.filas.map(f => [f.slug, f.marca])));
+    comprobar(por9.doge.estado === 'offline' && por9.doge.marca === 'Desconectado',
+        'doge, en el listado de la 320 pero emitiendo Overwatch: «Desconectado»');
+    comprobar(por9.doge.aviso === 'No está transmitiendo el juego de esta campaña', 'con el aviso de siempre');
+    // El control: el mismo camino con un directo que SI es de la categoria.
+    comprobar(por9.trader.estado === 'live' && /40/.test(por9.trader.marca),
+        'trader, en el listado y emitiendo la 320: en vivo');
+    comprobar(por9.sustain.estado === 'offline' && !r9.canales.pedidas.includes('sustain'),
+        'sustain, fuera del listado: «Desconectado» sin preguntar');
+    comprobar(r9.canales.visto2()[0] === 'trader', 'y el unico en vivo de verdad sube el primero');
+
+    console.log('\n=== sin listado, canal a canal: tambien se mira la categoria ===');
+    const r10 = await run({
+        url: 'https://kick.com/drops/campaigns', panels: [{ hidden: false, html: '' }],
+        dialogo: dialogoMoon, dialogoMs: 2500, canalesApi: apiMoon, apiCampaigns: moon(MOON),
+        listados: { 320: 500 }, waitMs: 6000, dejarAbierta: true
+    });
+    const por10 = Object.fromEntries(r10.canales.filas.map(f => [f.slug, f]));
+    comprobar(por10.doge.estado === 'offline' && por10.trader.estado === 'live',
+        'con el listado caido, doge sigue «Desconectado» y trader en vivo');
 
     console.log('\n=== proximas y cerradas: el dialogo de Kick tal cual, sin consultar ===');
     // Pedido el 2026-10-05: fuera de la ventana de la campaña quien emite no importa, y

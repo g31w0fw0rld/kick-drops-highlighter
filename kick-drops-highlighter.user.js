@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.29
+// @version      1.3.30
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.29";
+    const SCRIPT_VERSION = "1.3.30";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -8943,7 +8943,11 @@
                 if (d && typeof d === 'object' && 'data' in d) {
                     if (!d.data) return { estado: 'offline', viewers: 0 };
                     const v = Number(d.data.viewers ?? d.data.viewer_count);
-                    return { estado: 'live', viewers: Number.isFinite(v) ? v : 0 };
+                    // La categoria del directo AHORA: `category` es un objeto con `id`
+                    // (medido el 2026-10-17: doge -> {id: 6, name: "Overwatch", …}).
+                    const cat = d.data.category;
+                    return { estado: 'live', viewers: Number.isFinite(v) ? v : 0,
+                        categorias: cat && cat.id != null ? [String(cat.id)] : [] };
                 }
 
                 // Respaldo, solo si la ligera contesta con otra forma: el canal completo,
@@ -8955,8 +8959,12 @@
                 if (completa.conservar) return completa;
                 const c = completa.json;
                 if (!c || typeof c !== 'object' || !('livestream' in c)) throw new Error('sin livestream');
+                // Aqui la categoria va en una LISTA, `livestream.categories` (medido el
+                // mismo dia: [{id: 6, name: "Overwatch", …}]).
                 return c.livestream
-                    ? { estado: 'live', viewers: Number(c.livestream.viewer_count) || 0 }
+                    ? { estado: 'live', viewers: Number(c.livestream.viewer_count) || 0,
+                        categorias: (c.livestream.categories || []).map(x => x && x.id)
+                            .filter(x => x != null).map(String) }
                     : { estado: 'offline', viewers: 0 };
             }).then((e) => {
                 // Un fallo pasajero (429, 5xx, red) conserva lo que ya se sabia, con su
@@ -9072,7 +9080,19 @@
             return { lista, filas };
         }
 
-        function _ponMarcaEnFila(f) {
+        // EL ESTADO DE UN CANAL PARA LA CAMPAÑA DE ESTE DIALOGO. En vivo con OTRA
+        // categoria no gana el drop, asi que para el dialogo es «Desconectado», que es lo
+        // que su aviso ya dice («No esta transmitiendo el juego de esta campaña»). Sin la
+        // categoria de la campaña, o sin la del directo, no se puede comparar y vale el
+        // dato tal cual. Ver la nota de LIVE_LISTADO_URL.
+        function _estadoEnDialogo(slug, categoriaId) {
+            const e = _estadoCanalKick[slug];
+            if (!e || e.estado !== 'live' || categoriaId == null) return e;
+            if (!Array.isArray(e.categorias) || !e.categorias.length) return e;
+            return e.categorias.includes(String(categoriaId)) ? e : { estado: 'offline', viewers: 0, t: e.t };
+        }
+
+        function _ponMarcaEnFila(f, categoriaId) {
             let b = [...f.enlace.children].find(n => n.classList.contains('kick-live-badge'));
             if (!b) {
                 b = document.createElement('span');
@@ -9088,12 +9108,12 @@
                 const boton = [...f.enlace.children].find(n => n.tagName === 'BUTTON');
                 f.enlace.insertBefore(b, boton || null);
             }
-            _pintarMarcaDirecto(b, _estadoCanalKick[f.slug]);
+            _pintarMarcaDirecto(b, _estadoEnDialogo(f.slug, categoriaId));
         }
 
         // Ultimo reordenado de cada lista, para el ritmo de las listas largas.
         const _ultimoOrden = new WeakMap();
-        function _ordenarFilasDeCanal(lista, filas) {
+        function _ordenarFilasDeCanal(lista, filas, categoriaId) {
             // Con todo el dato en mano se ordena enseguida. Mientras faltan respuestas, solo
             // cada 2 s: con una lista corta eso es esperar al final —saltarian a medida que
             // llegan—, y con una de cientos, al paso de una peticion cada 150 ms, seria
@@ -9115,7 +9135,7 @@
             const hijos = [...lista.children];
             const primera = hijos.findIndex(h => deFila.has(h));
             hijos.forEach((h, i) => { if (!deFila.has(h)) setOrder(h, i < primera ? 0 : 100000); });
-            _ordenarPorDirecto(filas, f => _estadoCanalKick[f.slug], f => f.nombre || f.slug)
+            _ordenarPorDirecto(filas, f => _estadoEnDialogo(f.slug, categoriaId), f => f.nombre || f.slug)
                 .forEach((f, i) => {
                     setOrder(f.fila, i + 1);
                     // En una columna flex con altura tope las filas encogerian para caber
@@ -9159,6 +9179,26 @@
         // el drop es lo mismo, ahi no se gana—. Si el listado no se completa (fallo, 429,
         // o una categoria enorme que pasa del tope de paginas), los que no han salido NO
         // se dan por desconectados: siguen por la ruta de uno en uno, con su freno.
+        //
+        // Y EL LISTADO SIRVE PARA DESCARTAR, NO PARA CONFIRMAR. Su categoria es la de
+        // cuando EMPEZO el directo, no la de ahora. Visto el 2026-10-17 con «MOON
+        // Trading» (categoria 320, Crypto & Trading): el listado de la 320 traia a
+        // `doge` con 338 espectadores, y el script lo pintaba en verde, mientras su
+        // `/livestream` —y su pagina— decian Overwatch (6). El directo se titulaba «TO
+        // THE MOON»: habia empezado en la 320 y se cambio sin salir del listado. Asi que
+        // lo que el listado da en vivo se confirma con `/livestream`, que si trae la
+        // categoria actual (ver _estadoEnDialogo): una peticion por canal EN VIVO, no por
+        // canal participante, que suelen ser una fraccion.
+        //
+        // Lo que el listado NO trae sigue sin consultarse, y eso es seguro: el listado no
+        // olvida la categoria NUEVA, sino que no borra la VIEJA. Medido ese mismo dia:
+        // `doge` salia en los DOS listados con el mismo `start_time` —en el de Overwatch
+        // con su titulo y espectadores al dia («dominating», 233), y en el de la 320
+        // congelado en el momento del cambio («TO THE MOON», 338)—. O sea que quien se
+        // pasa A la categoria de la campaña aparece en su listado como cualquier otro.
+        // Y el listado tambien trae directos YA TERMINADOS: de una muestra de 15 canales
+        // de la 320, dos daban `data: null` en su `/livestream`. La confirmacion los
+        // deja en «Desconectado» igual.
         const LIVE_LISTADO_URL = 'https://web.kick.com/api/v1/livestreams';
         const LIVE_MAX_PAGINAS = 20; // 2.000 directos, ~2,5 MB: de ahi en adelante, uno a uno
         const _listadoCategoria = {}; // categoriaId -> { t, completo, ok }
@@ -9231,8 +9271,19 @@
                     console.warn('[Kick Drops] El listado de directos por categoria no contesto; se sigue canal a canal');
                 }
                 for (const s of buscados) {
-                    if (res.vivos.has(s)) _estadoCanalKick[s] = { estado: 'live', viewers: res.vivos.get(s), t: ahora };
-                    else if (res.completo) _estadoCanalKick[s] = { estado: 'offline', viewers: 0, t: ahora };
+                    if (res.vivos.has(s)) {
+                        // Lo que el listado da en vivo se CONFIRMA con el directo del canal
+                        // (ver la nota de LIVE_LISTADO_URL); solo si el canal no contesta
+                        // vale lo que dijo el listado.
+                        const v = res.vivos.get(s);
+                        estadoKick(s, 0).then((e) => {
+                            if (!e || e.estado === 'unknown') {
+                                _estadoCanalKick[s] = { estado: 'live', viewers: v,
+                                    categorias: [String(categoriaId)], t: Date.now() };
+                            }
+                            _programarPasadaCanales();
+                        });
+                    } else if (res.completo) _estadoCanalKick[s] = { estado: 'offline', viewers: 0, t: ahora };
                 }
                 const entrada = { t: ahora, completo: res.completo, ok: res.paginas > 0 };
                 _listadoCategoria[categoriaId] = entrada;
@@ -9285,7 +9336,7 @@
                     estadoCategoriaKick(r.categoriaId, r.slugs).then(_programarPasadaCanales);
                 }
                 for (const f of r.filas) {
-                    _ponMarcaEnFila(f);
+                    _ponMarcaEnFila(f, r.categoriaId);
                     // Canal a canal solo lo que no tiene NINGUN dato, y solo cuando no hay
                     // listado que lo vaya a resolver: sin categoria, o con el listado ya
                     // vuelto sin el (incompleto o fallido). Lo demas lo renueva el minuto.
@@ -9294,7 +9345,7 @@
                         estadoKick(f.slug).then(_programarPasadaCanales);
                     }
                 }
-                if (r.lista) _ordenarFilasDeCanal(r.lista, r.filas);
+                if (r.lista) _ordenarFilasDeCanal(r.lista, r.filas, r.categoriaId);
             }
             const hay = dialogos.length > 0;
             if (hay && !_canalesRefresco) {
