@@ -142,7 +142,8 @@ const base = {
             status: 'claimed',
             condition: { type: 'watch_time_minutes', progress: 60, threshold: 60 },
             claimed_at: iso(Date.now() - 2 * hora),
-            winner: { id: 'w1', rarity: 'rare', card_url: 'drops/reward-image/carta.png' }
+            // Con carta Y miniatura, como lo trae el diario: manda la carta.
+            winner: { id: 'w1', rarity: 'rare', card_url: 'drops/reward-image/carta.png', thumbnail_url: 'https://ext.cdn.kick.com/chat/emotes/shields/escudo.png' }
         })
     });
     anota('ya cobrado', hecho);
@@ -153,6 +154,7 @@ const base = {
         // Aqui el "cuando" SI existe: `claimed_at` lo trae, al contrario que los drops.
         if (!hecho.cofre.izquierda) fallos.push('claimed: la tarjeta no dice cuando se cobro, y el dato viene en claimed_at');
         if (hecho.cofre.imagen === 'cofre') fallos.push('claimed: se quedo el cofre en vez de la carta que toco (winner.card_url)');
+        else if (!/carta\.png$/.test(hecho.cofre.imagen || '')) fallos.push(`claimed: con carta y miniatura tenia que ir la carta: ${hecho.cofre.imagen}`);
     }
 
     // --- Status desconocido y ventana cerrada: nada -------------------------------

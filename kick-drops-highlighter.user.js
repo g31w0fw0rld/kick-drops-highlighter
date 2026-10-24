@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.31
+// @version      1.3.32
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.31";
+    const SCRIPT_VERSION = "1.3.32";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -7966,7 +7966,7 @@
         //   claimed      como las demas baldosas: la ✓ y el cuando. Y aqui el "cuando" si
         //                existe, que `claimed_at` lo trae —al contrario que los drops,
         //                donde esa linea sale vacia—; y la imagen pasa a ser lo que toco
-        //                (`winner.card_url`) cuando viene.
+        //                (`winner.card_url`, o `thumbnail_url` si no hay carta) cuando viene.
         //
         // Un status desconocido no pinta nada, igual que no avisa: uno nuevo —un "perdido"
         // para el dia que se cierra sin cobrar— caeria por descarte en in_progress y la
@@ -8074,7 +8074,13 @@
             card.id = op.id;
             card.className = `${W_SURFACE} flex flex-col rounded-lg overflow-hidden`;
 
-            const won = (claimed && c.winner && c.winner.card_url) || '';
+            // La carta, o la miniatura si no hay carta. El cofre diario reparte emotes con
+            // su carta (`card_url`) y su escudo (`thumbnail_url`), y se prefiere la carta,
+            // que es lo que enseña Kick. El de evento no: el «Trick or Treat» cobrado el
+            // 2026-10-23 traia `card_url: ""` y la imagen solo en `thumbnail_url`
+            // (content.kick.com/public/rewards/thumbnails/…), y sin este respaldo la baldosa
+            // seguia enseñando el cofre despues de cobrarlo.
+            const won = (claimed && c.winner && (c.winner.card_url || c.winner.thumbnail_url)) || '';
             // LAS DOS VAN ENTERAS (`contain`), y desde el 2026-09-17 tambien la carta que
             // toca. El cofre ya iba asi porque lleva su propio margen negro; la carta iba
             // recortada (`cover`) por parecerse a las de recompensa, y no se parece: las

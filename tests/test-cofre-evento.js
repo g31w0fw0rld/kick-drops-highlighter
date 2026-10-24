@@ -171,7 +171,9 @@ const base = {
         challenges: [evento({
             status: 'claimed', condition: { type: 'watch_time_minutes', progress: 180, threshold: 180 },
             claimed_at: iso(Date.now() - hora),
-            winner: { id: 'w1', rarity: 'rare', card_url: 'https://files.kick.com/rewards/carta.png' }
+            // La forma real del 2026-10-23: el evento trae la carta VACIA y la imagen en la
+            // miniatura.
+            winner: { id: 'w1', rarity: 'common', card_url: '', thumbnail_url: 'https://content.kick.com/public/rewards/thumbnails/premio.png' }
         }), diario()]
     });
     const evc = (cobrado.cofresEvento || [])[0];
@@ -179,7 +181,7 @@ const base = {
     if (!evc) fallos.push('el evento cobrado no pintó baldosa');
     else {
         if (evc.pie !== 'check') fallos.push(`el evento cobrado tiene pie "${evc.pie}"`);
-        if (evc.imagen !== 'https://files.kick.com/rewards/carta.png') fallos.push(`el evento cobrado no enseña la carta: ${evc.imagen}`);
+        if (evc.imagen !== 'https://content.kick.com/public/rewards/thumbnails/premio.png') fallos.push(`el evento cobrado no enseña lo que tocó (thumbnail_url): ${evc.imagen}`);
         if (evc.video) fallos.push('el evento cobrado sigue con el video del cofre en vez de la carta');
     }
 
