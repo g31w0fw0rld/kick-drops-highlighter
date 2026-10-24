@@ -71,7 +71,12 @@ const base = {
         // 60 − 14. Y en minutos de VER, no una cuenta atras de reloj.
         if (c.izquierda !== '46m') fallos.push(`acumulando: falta por ver "${c.izquierda}" en vez de 46m`);
         if (c.contador !== '14/60') fallos.push(`acumulando: el contador dice "${c.contador}"`);
-        if (c.imagen !== 'cofre') fallos.push(`acumulando: la imagen no es el cofre incrustado: ${c.imagen}`);
+        if (c.imagen !== 'cofre') fallos.push(`acumulando: la imagen no es el cofre: ${c.imagen}`);
+        // El video del cofre del modal de Kick. El reto de este caso no trae
+        // `animations`, así que sale el de reserva, que es el que daba la API.
+        if (!c.video || c.video[0] !== 'https://static.kick.com/rewards/daily-rewards/idle.webm') {
+            fallos.push(`acumulando: el cofre no es el video del modal de Kick: ${JSON.stringify(c.video)}`);
+        }
         if (!/reclama/i.test(c.pieTexto)) fallos.push(`acumulando: la nota no dice que se reclama solo: "${c.pieTexto}"`);
         // La barra, con la forma de las de Kick: al pie del recuadro de la imagen y con
         // el relleno escalado, no un ancho en porcentaje.

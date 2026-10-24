@@ -135,7 +135,7 @@ function page({ url, panels, cofre }) {
 // que se ve al volver a reclamados: el script ya corrio y el panel todavia no estaba, asi
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
-async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, dialogoRadix = false, dialogoEn = null, quitar = null, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null }) {
+async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, dialogoRadix = false, dialogoEn = null, quitar = null, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null, cofreModal = null, clickBanda = null }) {
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -652,9 +652,11 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 // El boton de escritorio abre el dialogo de escritorio aunque se este en
                 // movil: es lo que se vio en 'movil-real'. Solo la fila del menu abre el drawer.
                 if (esMovil && b.getAttribute('aria-haspopup') !== 'dialog') dlg.setAttribute('data-vaul-drawer-direction', 'bottom');
+                // `cofreModal` cambia el contenido por otro, con la cabecera y la X de
+                // siempre: es como entra el carrusel de varios cofres (2026-10-23).
                 dlg.innerHTML =
                     '<svg viewBox="0 0 16 16"><path d="' + ICONO_COFRE + '"></path></svg>' +
-                    '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>' +
+                    (cofreModal || '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>') +
                     '<button aria-label="Close reward dialog"><span class="sr-only">Close</span></button>';
                 // El dialogo se CIERRA de verdad, por sus dos vias (la X y Escape). Hace
                 // falta para que «el modal se queda abierto» sea una afirmacion: con un
@@ -662,9 +664,40 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 // verian igual.
                 dlg.querySelector('button[aria-label^="Close"]').addEventListener('click', () => dlg.remove());
                 w.document.addEventListener('keydown', ev => { if (ev.key === 'Escape') dlg.remove(); });
+                // El carrusel de Kick, en lo que el script toca: las flechas
+                // (`aria-keyshortcuts`) mueven `data-active` a la diapositiva vecina y
+                // dejan a la vista SU pie, escondiendo los demas. jsdom no desplaza, asi
+                // que desplazar el contenedor no mueve nada: solo las flechas.
+                const slides = () => Array.from(dlg.querySelectorAll('[data-carousel-slide]'));
+                const pies = () => Array.from(dlg.querySelectorAll('button.bg-primary-base'))
+                    .map(b => b.parentElement && b.parentElement.parentElement);
+                const activar = (i) => {
+                    slides().forEach((sl, j) => { if (j === i) sl.setAttribute('data-active', 'true'); else sl.removeAttribute('data-active'); });
+                    pies().forEach((pie, j) => { if (pie) { if (j === i) pie.removeAttribute('hidden'); else pie.setAttribute('hidden', ''); } });
+                    diapositivasTraidas.push(i);
+                };
+                dlg.querySelectorAll('button[aria-keyshortcuts]').forEach(fl => fl.addEventListener('click', () => {
+                    const ahora = slides().findIndex(sl => sl.getAttribute('data-active') === 'true');
+                    const sig = ahora + (fl.getAttribute('aria-keyshortcuts') === 'ArrowRight' ? 1 : -1);
+                    if (sig >= 0 && sig < slides().length) activar(sig);
+                }));
                 w.document.body.appendChild(dlg);
             }, 150);
         }, true);
+    }
+
+    // Las diapositivas del carrusel que el script trae a la vista, por su posicion. jsdom
+    // no desplaza nada, asi que se anota la llamada: es lo unico que dice si el script
+    // fue a la diapositiva del cofre que cobra.
+    // (Las anota el carrusel simulado del dialogo, mas arriba, cada vez que cambia.)
+    const diapositivasTraidas = [];
+
+    // Pulsa la banda de un cofre de evento en la pestaña 🔔, como haria el usuario.
+    if (clickBanda) {
+        setTimeout(() => {
+            const b = w.document.querySelector('[data-event-meter]');
+            if (b) b.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        }, clickBanda.at || 10000);
     }
 
     // Pulsa el boton «Reclamar» de la tarjeta del cofre, como haria el usuario.
@@ -911,6 +944,15 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 };
             })();
 
+            // LAS BANDAS DE LOS COFRES DE EVENTO, debajo del medidor (2026-10-23).
+            const bandasEvento = Array.from(d.querySelectorAll('#kick-drops-notifs-pane [data-event-meter]')).map(el => ({
+                id: el.getAttribute('data-event-meter'),
+                texto: (el.textContent || '').trim(),
+                trasElMedidor: !!(el.previousElementSibling &&
+                    (el.previousElementSibling.hasAttribute('data-streak-meter') ||
+                     el.previousElementSibling.hasAttribute('data-event-meter')))
+            }));
+
             // QUE SOLAPA ESTA DELANTE. Es lo unico que dice si el panel se planto en 🔔,
             // que desde el 2026-09-22 depende de la casilla de cerrados/completados: la
             // racha solo la abre con esa casilla puesta. Sin esto, «se enfoca» y «no se
@@ -931,6 +973,7 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 clicsDialogo,
                 dialogoAbiertoAlFinal: !!w.document.querySelector('[role="dialog"][data-state="open"]'),
                 medidor,
+                bandasEvento,
                 solapaDelante,
                 // Para diagnosticar los ganchos que pulsan cosas: que botones hay de
                 // verdad en el panel y que campos de texto quedaron abiertos.
@@ -1033,6 +1076,7 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     const fila = info.children[0];
                     const pie = card.children[3];
                     const img = card.querySelector('img');
+                    const video = card.querySelector('video');
                     return {
                         izquierda: (fila.children[0].textContent || '').trim(),
                         contador: (fila.children[1].textContent || '').trim(),
@@ -1040,9 +1084,11 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                         pie: pie.querySelector('button') ? 'boton'
                             : (pie.querySelector('svg') ? 'check' : 'nota'),
                         pieTexto: (pie.textContent || '').replace(/\s+/g, ' ').trim(),
-                        // El cofre incrustado se distingue de la carta que toco: la
-                        // primera es un data: URI y la segunda una URL del CDN.
-                        imagen: /^data:image/.test(img.getAttribute('src') || '') ? 'cofre' : (img.getAttribute('src') || ''),
+                        // El cofre se distingue de la carta que toco: el primero es el
+                        // video del modal de Kick (desde el 2026-10-23; antes, un data:
+                        // URI) y la segunda una <img> del CDN.
+                        imagen: video ? 'cofre' : (img ? (img.getAttribute('src') || '') : ''),
+                        video: video ? Array.from(video.querySelectorAll('source')).map(s => s.getAttribute('src')) : null,
                         // La barra de progreso. null cuando la baldosa no la lleva, que
                         // es lo que tiene que pasar en cuanto se puede cobrar.
                         barra: (() => {
@@ -1064,6 +1110,31 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                         clicable: card.style.cursor === 'pointer'
                     };
                 })(),
+                // Las baldosas de los cofres de EVENTO, en el orden de la rejilla, y la
+                // posicion de cada una contra la del diario.
+                cofresEvento: Array.from(d.querySelectorAll('[id^="kick-event-chest-"]')).map(card => {
+                    const info = card.children[1];
+                    const fila = info.children[0];
+                    const pie = card.children[3];
+                    const v = card.querySelector('video');
+                    const img = card.querySelector('img');
+                    return {
+                        id: card.id,
+                        nombre: (info.children[1].textContent || '').trim(),
+                        contador: (fila.children[1].textContent || '').trim(),
+                        izquierda: (fila.children[0].textContent || '').trim(),
+                        pie: pie.querySelector('button') ? 'boton'
+                            : (pie.querySelector('svg') ? 'check' : 'nota'),
+                        video: v ? Array.from(v.querySelectorAll('source')).map(s => s.getAttribute('src')) : null,
+                        videoMudo: v ? (v.muted && v.loop && v.autoplay) : null,
+                        imagen: img ? img.getAttribute('src') : null,
+                        detrasDelDiario: (() => {
+                            const dia = d.getElementById('kick-daily-chest-card');
+                            return !!dia && !!(dia.compareDocumentPosition(card) & 4);
+                        })()
+                    };
+                }),
+                diapositivasTraidas,
                 // Si queda un dialogo de Kick abierto. Es lo que separa el reclamo a mano
                 // del automatico: el automatico cierra el modal y el de la tarjeta lo deja,
                 // que es el resultado que se ha pedido al pulsar.
@@ -1084,7 +1155,8 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                     return true;
                 })(),
                 claimedGrid: !!d.getElementById('kick-claimed-inventory'),
-                claimedGridCards: d.querySelectorAll('#kick-claimed-inventory img').length,
+                // Una por imagen, y el cofre en curso lleva <video> desde el 2026-10-23.
+                claimedGridCards: d.querySelectorAll('#kick-claimed-inventory img, #kick-claimed-inventory video').length,
                 // LAS DOS GENERACIONES DE CLASES. Miraba solo `bg-surface-base`, que es la
                 // vieja, asi que desde el renombre de septiembre de 2026 no veia ni un grupo
                 // del DOM nuevo: un test que contara grupos escondidos ahi daba 0 siempre y
@@ -1112,7 +1184,9 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 // script escribio: la proporcion del recuadro y si la imagen esta o no en
                 // el flujo —que son las dos cosas que decidian la altura cuando la baldosa
                 // del cofre salia mas alta que las de drop, el 2026-09-17—.
-                cajasRejilla: Array.from(d.querySelectorAll('#kick-claimed-inventory img')).map(img => {
+                // El cofre en curso lleva <video> en vez de <img> desde el 2026-10-23, y
+                // cuenta igual: es la misma caja.
+                cajasRejilla: Array.from(d.querySelectorAll('#kick-claimed-inventory img, #kick-claimed-inventory video')).map(img => {
                     const recuadro = img.parentElement;
                     const tarjeta = recuadro && recuadro.parentElement;
                     return {
