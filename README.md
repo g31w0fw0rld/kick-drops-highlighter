@@ -70,7 +70,7 @@ Userscript that classifies and highlights drops/campaigns on Kick based on your 
 </tr>
 <tr>
 <td align="center"><b>Trick or Treat</b><br>Halloween · 2026-10-24 → 11-01<br>180 min</td>
-<td align="center"><b>Sunset Reward Case</b><br>2026-11-12 → …<br>180 min</td>
+<td align="center"><b>Sunset Reward Case</b><br>2026-11-12 → 11-19<br>180 min</td>
 </tr>
 </table>
 
