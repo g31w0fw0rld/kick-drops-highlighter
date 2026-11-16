@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kick Drops Highlighter + Keywords (Full + i18n)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.33
+// @version      1.3.34
 // @description  Drops panel for Kick. Kick hands you a wall of campaigns with no way to say which games you care about, and never tells you how much watch time a drop still needs — only a bar that says it is in progress. This outlines the ones your keywords match on the page itself and puts the exact time left on every card, daily chest included. Its queries only read; claiming is optional and ships off. The rest is in "Script Information" and in the repository. 16 languages.
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAADbN2wMAAACDklEQVRoBWNkYGD4D8RDFjANWZdDHT7qgYGOQRZcDuBRZWZg5SUtgj7f/MPw5yvuLMXCzcjAq47TSqxO+f7iL8OPZ/+wyoEEGYEYq4022wUZxF3ZcWrEJnHA9i3D2+O/sUmBxYTMWRkcjwrjlMcmcb3lC8O1hi/YpMBipAUxTmMGTmLIe4C0BEliQDOxAtMoMyiVQgATG4INE6OUpqkHDKbwMygmc1LqRrz6h3wSGvUA3vilgyRV84BmLQ/DzzeISkfInI3mXqCqB8TdSKv4qOG70TxAjVCkxAyqJiFKHALT+2zjD4bP1//CuAxvDv+Cs7ExBp0HHq/8wfBk1Q9sbsUqNpoHsAYLHQUHNgkBeyLI9QbI3/9+kub7AfXAny//GbZIviLNxWiqR/MAWoDQnTvkY2BA8wALDyODz3MxlFg7l/GJAVSZEQsG1AOgMRF2UdREwERiexBVN7HeHkTqhrwHBjYJYYlJ2XAOBgE94HAGFLza/5Ph1V7cDbpB5wEpfw4GBn+Y84E185//eD0w5JPQkPcAVZPQy10/URpnoE49jzIzIj3QgEVVD1xv/oIyOm00kx/ogdGRObzxNuTzwJD3AFXzAHpcX8j5yHAx/xNcWNCUlcF+vxCcTw0GTT3wDzTb9Bsxg/XvF4JNDceDzBjySWjIewDnLOWQn2alVhqltTlDPgmNeoDWSYSQ+QBtb3EIrd4ykAAAAABJRU5ErkJggg==
 // @match        https://kick.com/drops/*
@@ -19,7 +19,7 @@
 
 (function () {
     "use strict";
-    const SCRIPT_VERSION = "1.3.33";
+    const SCRIPT_VERSION = "1.3.34";
     console.log("Kick Drops Highlighter cargado (document-start). Version:", SCRIPT_VERSION);
 
     // ==== =========================================
@@ -4459,29 +4459,61 @@
         // y `condition.type` porque un reto de otra clase (seguir a alguien, chatear)
         // tendria umbral en otra unidad y el "te faltan N min" seria mentira.
         //
-        // Y sin `active_period`, que es lo que marca un COFRE DE EVENTO (2026-10-23, el
-        // «Trick or Treat» de Halloween). El del evento es tambien `daily` y tambien de
-        // minutos vistos —180 en vez de 60—, asi que los dos primeros filtros lo dejan
-        // pasar, y hoy solo lo salvaba que la API devuelve el diario primero. Lo que los
-        // separa es eso: el evento trae `active_period` (la semana que dura) ademas de su
-        // `window` del dia, y `featured`. Se mira el periodo y no `featured`, que dice
-        // donde lo pone Kick en el carrusel y no que sea un evento.
+        // Y que no sea un COFRE DE EVENTO (2026-10-23, el «Trick or Treat» de Halloween).
+        // El del evento es tambien `daily` y tambien de minutos vistos —180 en vez de 60—,
+        // asi que los dos primeros filtros lo dejan pasar.
+        //
+        // NINGUN CAMPO SUELTO DICE «EVENTO», y eso ya se pago una vez. Con Halloween el
+        // evento traia `active_period` (la semana que dura) y el diario no, y era lo unico
+        // que se miraba. El 2026-11-15 el «Sunset Reward Case» (GTA VI) llego SIN el: ya no
+        // viene en ningun reto (volcado en
+        // docs/api-challenges-event-no-active-period-2026-11-15.json), y el cofre de
+        // evento se esfumo de la baldosa y de la banda sin un error. El diario seguia
+        // bien solo porque la API lo devuelve primero.
+        //
+        // Asi que se cuentan las tres SEÑALES que ha dado un evento y ninguna ha dado el
+        // diario, y es el diario el reto que MENOS tenga:
+        //   · `active_period`, la de Halloween;
+        //   · `featured: true`, en los dos eventos vistos y nunca en el diario. Dice donde
+        //     lo pone Kick en el carrusel, no que sea un evento: por eso no decide sola;
+        //   · un cofre animado que no es el del diario. El diario lleva siempre el de
+        //     `rewards/daily-rewards/` y cada evento el suyo (`halloween-2610`,
+        //     `gta-vi-2611`): es lo que hace que su modal se vea distinto.
+        // Con empate manda el orden de la API, que hasta hoy ha dado siempre el diario
+        // primero. Y con dos señales o mas no es el diario aunque no quede otro: un evento
+        // que llegue solo no puede ponerse a medir la racha.
+        function _señalesDeEvento(c) {
+            let n = 0;
+            if (c.active_period) n++;
+            if (c.featured === true) n++;
+            const idle = _idleUrl(c);
+            if (idle && !/\/rewards\/daily-rewards\//.test(idle)) n++;
+            return n;
+        }
+
         function _dailyWatchChallenge() {
+            let diario = null;
+            let menos = Infinity;
             for (const c of (_kickChallenges || [])) {
                 if (!c || c.recurrence !== 'daily') continue;
                 if (!c.condition || c.condition.type !== 'watch_time_minutes') continue;
-                if (c.active_period) continue;
-                return c;
+                const n = _señalesDeEvento(c);
+                if (n < menos) { diario = c; menos = n; }
             }
-            return null;
+            return menos <= 1 ? diario : null;
         }
 
-        // Los cofres de evento, todos los que haya. Solo los de minutos vistos: son los
-        // unicos cuyo progreso sabe pintar la baldosa. NO entran en la racha ni en su
-        // aviso: la racha es del cofre diario, y un evento no la salva ni la rompe.
+        // Los cofres de evento, todos los que haya: los de minutos vistos que no son el
+        // diario y dan alguna señal de evento (ver _señalesDeEvento). Solo los de minutos
+        // vistos porque son los unicos cuyo progreso sabe pintar la baldosa, y con alguna
+        // señal para que un reto de otra clase que no conocemos —uno semanal— no salga
+        // como evento por eliminacion. NO entran en la racha ni en su aviso: la racha es
+        // del cofre diario, y un evento no la salva ni la rompe.
         function _eventWatchChallenges() {
-            return (_kickChallenges || []).filter(c => c && c.active_period &&
-                c.condition && c.condition.type === 'watch_time_minutes');
+            const diario = _dailyWatchChallenge();
+            return (_kickChallenges || []).filter(c => c && c !== diario &&
+                c.condition && c.condition.type === 'watch_time_minutes' &&
+                _señalesDeEvento(c) > 0);
         }
 
         // =============================================

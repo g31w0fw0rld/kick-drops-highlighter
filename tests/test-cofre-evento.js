@@ -165,6 +165,44 @@ const base = {
     }
     if (dos.medidor && /180/.test(dos.medidor.texto || '')) fallos.push(`el medidor de racha habla del evento: "${dos.medidor.texto}"`);
 
+    // --- La API SIN `active_period` (2026-11-15) -----------------------------------
+    // La respuesta real del «Sunset Reward Case», tal cual salvo la ventana, que se
+    // corre a hoy para que el test no caduque. Ese día el campo desapareció y el cofre
+    // de evento dejó de salir. Se corre en el orden de la API y al revés: en su orden
+    // el diario acertaba de rebote y solo faltaba el evento; al revés, sin señal que
+    // los separe, el diario se habría quedado con los minutos del evento.
+    const fs = require('fs');
+    const path = require('path');
+    const real = JSON.parse(fs.readFileSync(
+        path.join(__dirname, '..', 'docs', 'api-challenges-event-no-active-period-2026-11-15.json'), 'utf8')).data;
+    if (real.some(c => 'active_period' in c)) fallos.push('el volcado del 2026-11-15 trae `active_period`: ya no prueba lo que dice');
+    const deHoy = () => real.map(c => ({ ...c, window: ventana() }));
+    for (const [orden, retos] of [['orden de la API', deHoy()], ['al revés', deHoy().reverse()]]) {
+        const r = await run({ ...base, challenges: retos });
+        console.log(JSON.stringify({ caso: `sin active_period, ${orden}`, diario: r.cofre, eventos: r.cofresEvento, bandas: r.bandasEvento, medidor: r.medidor && r.medidor.texto }));
+        if (!r.cofre) fallos.push(`sin active_period (${orden}): no se pintó la baldosa del diario`);
+        else if (r.cofre.contador !== '4/60') fallos.push(`sin active_period (${orden}): la baldosa del diario dice "${r.cofre.contador}"`);
+        const e = (r.cofresEvento || [])[0];
+        if ((r.cofresEvento || []).length !== 1) fallos.push(`sin active_period (${orden}): hay ${(r.cofresEvento || []).length} baldosas de evento y tenía que haber 1`);
+        else {
+            if (e.nombre !== 'Sunset Reward Case') fallos.push(`sin active_period (${orden}): la baldosa del evento se llama "${e.nombre}"`);
+            if (e.contador !== '4/180') fallos.push(`sin active_period (${orden}): la baldosa del evento dice "${e.contador}"`);
+            if ((e.video || [])[0] !== 'https://static.kick.com/rewards/gta-vi-2611/idle.webm') fallos.push(`sin active_period (${orden}): el video del evento no es el suyo: ${JSON.stringify(e.video)}`);
+        }
+        if (!(r.bandasEvento || []).some(b => /Sunset Reward Case/.test(b.texto) && /4\/180 min/.test(b.texto))) {
+            fallos.push(`sin active_period (${orden}): no hay banda del evento en 🔔: ${JSON.stringify(r.bandasEvento)}`);
+        }
+        if (r.medidor && /180/.test(r.medidor.texto || '')) fallos.push(`sin active_period (${orden}): el medidor de racha habla del evento: "${r.medidor.texto}"`);
+    }
+
+    // --- Solo el diario, y marcado `featured` --------------------------------------
+    // Una señal sola no lo convierte en evento: sin otro reto, sigue siendo el diario y
+    // no sale ninguna baldosa de evento. Es lo que impide que `featured` decida solo.
+    const soloDiario = await run({ ...base, challenges: [diario({ featured: true })] });
+    console.log(JSON.stringify({ caso: 'solo el diario, featured', diario: soloDiario.cofre, eventos: soloDiario.cofresEvento }));
+    if (!soloDiario.cofre || soloDiario.cofre.contador !== '4/60') fallos.push(`el diario marcado featured dejó de ser el diario: ${JSON.stringify(soloDiario.cofre)}`);
+    if ((soloDiario.cofresEvento || []).length) fallos.push('el diario marcado featured salió además como evento');
+
     // --- El evento cobrado: la carta que tocó, no el video -------------------------
     const cobrado = await run({
         ...base,
