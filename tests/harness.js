@@ -136,6 +136,8 @@ function page({ url, panels, cofre }) {
 // que la rejilla no tenia de donde colgarse. Sin esto no hay forma de distinguir "no se
 // pinta nunca" de "se pinta cuando puede".
 async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress = null, progressMs = 0, challenges = null, challengesRefetch = null, seed = {}, lateHtml = null, lateMs = 4000, snapAt = {}, clickPaneCard = null, clickPaneCards = null, navigateTo = null, addKeyword = null, hover = null, clickDrop = null, casilla = null, cofre = null, clickCofre = null, clickTarjetaCofre = null, clickMedidor = null, dejarAbierta = false, dialogo = null, dialogoMs = 3000, dialogoFueraMs = null, dialogoRadix = false, dialogoEn = null, quitar = null, canalesApi = null, canalesApiCompleto = null, listados = null, intervaloManual = null, cofreModal = null, clickBanda = null }) {
+    // El reloj de `botonesPulsadosEn` y `retosPedidosEn`.
+    const t0 = Date.now();
     const vc = new VirtualConsole();
     const logs = [];
     vc.on('jsdomError', e => logs.push('jsdomError: ' + e.message));
@@ -165,9 +167,12 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     //
     // Devuelve `challengesRefetch` si el test lo da: por aqui solo se pasa cuando el reto
     // guardado ya no vale, asi que servir el mismo de antes no probaria nada.
+    // Cuando se pide, en ms desde el arranque (ver `botonesPulsadosEn`).
+    const retosPedidosEn = [];
     w.GM_xmlhttpRequest = (opts) => {
         const u = String((opts && opts.url) || '');
         if (!u.includes('/api/v1/gamification/challenges')) return;
+        retosPedidosEn.push(Date.now() - t0);
         const payload = challengesRefetch || challenges;
         setTimeout(() => {
             if (!payload) { if (opts.onerror) opts.onerror(new Error('sin datos')); return; }
@@ -274,11 +279,18 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
     // eso no tiene ningun efecto visible, asi que sin anotarlo el caso pasa igual
     // reclamando que sin reclamar.
     const botonesPulsados = [];
+    // Con su hora, en ms desde el arranque: hace falta para afirmar un ORDEN entre un
+    // clic y otra cosa —que los retos se relean DESPUES de cobrar, 2026-11-17—.
+    const botonesPulsadosEn = [];
     w.document.addEventListener('click', e => {
         const a = e.target && e.target.closest && e.target.closest('a[href]');
         if (a) tabClicks.push(a.getAttribute('href'));
         const b = e.target && e.target.closest && e.target.closest('button');
-        if (b) botonesPulsados.push(b.getAttribute('aria-label') || (b.textContent || '').trim());
+        if (b) {
+            const etiqueta = b.getAttribute('aria-label') || (b.textContent || '').trim();
+            botonesPulsados.push(etiqueta);
+            botonesPulsadosEn.push({ etiqueta, ms: Date.now() - t0 });
+        }
     }, true);
 
     // jsdom no trae portapapeles. Se captura lo copiado para poder comprobar el
@@ -654,28 +666,64 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 if (esMovil && b.getAttribute('aria-haspopup') !== 'dialog') dlg.setAttribute('data-vaul-drawer-direction', 'bottom');
                 // `cofreModal` cambia el contenido por otro, con la cabecera y la X de
                 // siempre: es como entra el carrusel de varios cofres (2026-10-23).
+                // Si `cofreModal` trae su propia X —la del sistema de diseño, con el icono
+                // `Cross`, la del modal del 2026-11-17— no se le añade la de antes: con las
+                // dos, un script que no conociera la nueva cerraria por la vieja y el test
+                // no lo veria.
+                const xPropia = !!cofreModal && cofreModal.includes('data-ds-icon="Cross"');
                 dlg.innerHTML =
                     '<svg viewBox="0 0 16 16"><path d="' + ICONO_COFRE + '"></path></svg>' +
                     (cofreModal || '<button class="bg-primary-base" aria-label="Claim daily reward">Claim</button>') +
-                    '<button aria-label="Close reward dialog"><span class="sr-only">Close</span></button>';
+                    (xPropia ? '' : '<button aria-label="Close reward dialog"><span class="sr-only">Close</span></button>');
                 // El dialogo se CIERRA de verdad, por sus dos vias (la X y Escape). Hace
                 // falta para que «el modal se queda abierto» sea una afirmacion: con un
                 // dialogo que no se puede cerrar, el reclamo a mano y el automatico se
                 // verian igual.
-                dlg.querySelector('button[aria-label^="Close"]').addEventListener('click', () => dlg.remove());
+                const x = xPropia
+                    ? dlg.querySelector('svg[data-ds-icon="Cross"]').closest('button')
+                    : dlg.querySelector('button[aria-label^="Close"]');
+                x.addEventListener('click', () => dlg.remove());
                 w.document.addEventListener('keydown', ev => { if (ev.key === 'Escape') dlg.remove(); });
                 // El carrusel de Kick, en lo que el script toca: las flechas
                 // (`aria-keyshortcuts`) mueven `data-active` a la diapositiva vecina y
                 // dejan a la vista SU pie, escondiendo los demas. jsdom no desplaza, asi
                 // que desplazar el contenedor no mueve nada: solo las flechas.
                 const slides = () => Array.from(dlg.querySelectorAll('[data-carousel-slide]'));
-                const pies = () => Array.from(dlg.querySelectorAll('button.bg-primary-base'))
-                    .map(b => b.parentElement && b.parentElement.parentElement);
+                // Los pies, por su «Reclamar» en cualquiera de las dos marcas del boton
+                // primario de Kick (la clase y, desde el 2026-11-17, `data-variant`). El
+                // pie es el ancestro del boton que cuelga del contenedor comun a todos: en
+                // el modal del 2026-10-23 es el abuelo y en el del 2026-11-17 el bisabuelo
+                // (alli el `hidden` va un nivel mas arriba, por la fila de rarezas).
+                const pies = () => {
+                    const bs = Array.from(dlg.querySelectorAll('button.bg-primary-base, button[data-variant="primary"]'));
+                    return bs.map(b => {
+                        let p = b;
+                        while (p.parentElement && !bs.every(x => p.parentElement.contains(x))) p = p.parentElement;
+                        return p;
+                    });
+                };
                 const activar = (i) => {
                     slides().forEach((sl, j) => { if (j === i) sl.setAttribute('data-active', 'true'); else sl.removeAttribute('data-active'); });
                     pies().forEach((pie, j) => { if (pie) { if (j === i) pie.removeAttribute('hidden'); else pie.setAttribute('hidden', ''); } });
                     diapositivasTraidas.push(i);
                 };
+                // Lo que hace Kick al cobrar un cofre: su pie se va del modal (visto el
+                // 2026-11-17: tras cobrar el evento quedaba un solo «Reclamar», el del
+                // diario). Un «Reclamar» deshabilitado no hace nada. Sin esto el boton
+                // pulsado seguiria ahi, habilitado, y no habria forma de ver al script
+                // esperar a que Kick lo de por cobrado antes de ir a por el siguiente.
+                dlg.addEventListener('click', (ev) => {
+                    const b = ev.target && ev.target.closest && ev.target.closest('button');
+                    if (!b || b.disabled || !b.matches('.bg-primary-base, [data-variant="primary"]')) return;
+                    const pie = pies()[Array.from(dlg.querySelectorAll('button.bg-primary-base, button[data-variant="primary"]')).indexOf(b)];
+                    setTimeout(() => {
+                        (pie || b).remove();
+                        // Y deja delante el pie que quede: ese dia, cobrado el evento, el
+                        // carrusel paso a abrir por el diario con su «Reclamar» a la vista.
+                        const quedan = pies();
+                        if (quedan.length && quedan.every(p => p.hasAttribute('hidden'))) quedan[0].removeAttribute('hidden');
+                    }, 300);
+                });
                 dlg.querySelectorAll('button[aria-keyshortcuts]').forEach(fl => fl.addEventListener('click', () => {
                     const ahora = slides().findIndex(sl => sl.getAttribute('data-active') === 'true');
                     const sig = ahora + (fl.getAttribute('aria-keyshortcuts') === 'ArrowRight' ? 1 : -1);
@@ -991,6 +1039,8 @@ async function run({ url, panels, waitMs = 6000, apiCampaigns = null, progress =
                 scrollDetalles,
                 tabClicks,
                 botonesPulsados,
+                botonesPulsadosEn,
+                retosPedidosEn,
                 paneles: d.querySelectorAll("#kick-drops-panel").length,
                 // El foco del panel al llegar desde una tarjeta (2026-10-02): que tarjetas
                 // quedaron marcadas y que solapa se ve. El desplazamiento no se puede

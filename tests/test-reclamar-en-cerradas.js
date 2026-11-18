@@ -45,6 +45,28 @@ if (panelEs === panel) {
     process.exit(1);
 }
 
+// Y EL MISMO BOTON CON EL MARCADO DEL 2026-11-17, que ya no lleva la clase: Kick paso
+// sus botones a un componente que se describe con atributos. Es el «Pedir» de un drop
+// de la pestaña de campañas de ese dia, tal cual salvo el nombre de la recompensa:
+//
+//     <button data-scope="button" data-part="root" dir="ltr" class="self-center"
+//             aria-label="Reclamar recompensa de …" type="button" data-slot="button"
+//             data-variant="primary" data-size="sm"><span …>Pedir</span></button>
+//
+// En español la etiqueta no dice «claim» y la clase ya no esta, asi que sin aceptar
+// `data-variant="primary"` esta vuelta no reclama nada (la 1.3.34 falla aqui).
+const BOTON_NUEVO = '<button data-scope="button" data-part="root" dir="ltr" class="self-center" ' +
+    'aria-label="Reclamar recompensa de Slouched Emote" type="button" data-slot="button" ' +
+    'data-variant="primary" data-size="sm"><span data-scope="button" data-part="label" ' +
+    'data-slot="button-label">Pedir</span></button>';
+const panelNuevo = panel.replace(
+    /<button class="[^"]*bg-primary-base[^"]*" dir="ltr" aria-label="Claim Slouched Emote reward">[\s\S]*?<\/button>/,
+    BOTON_NUEVO);
+if (panelNuevo === panel || /bg-primary-base[^"]*" dir="ltr" aria-label="Reclamar/.test(panelNuevo) || !panelNuevo.includes(BOTON_NUEVO)) {
+    console.log('FALLOS:\n - el fixture ya no trae el boton que esta vuelta sustituye por el del 2026-11-17');
+    process.exit(1);
+}
+
 const dia = 24 * 60 * 60 * 1000;
 const iso = ms => new Date(ms).toISOString();
 const ahora = Date.now();
@@ -138,6 +160,26 @@ const base = {
     }
     if ((es.botonesPulsados || []).some(e => /watch to redeem/i.test(String(e || '')))) {
         fallos.push('en español se pulso «Watch to redeem»');
+    }
+
+    // --- Y con el boton del 2026-11-17, sin la clase -------------------------------
+    const nuevo = await run({
+        ...base,
+        panels: [{ hidden: false, html: panelNuevo }],
+        seed: {
+            kick_drop_keywords: JSON.stringify(['teamfight']),
+            [CLAVE_CASILLA]: true
+        }
+    });
+    console.log(JSON.stringify({ botonNuevo: nuevo.botonesPulsados }, null, 2));
+
+    const pulsadosNuevo = (nuevo.botonesPulsados || []).filter(e => /Slouched Emote/.test(String(e || '')));
+    if (pulsadosNuevo.length !== 1) {
+        fallos.push('con el boton del 2026-11-17 (data-variant, sin la clase) no se reclamo una vez; ' +
+            `se pulsaron: ${JSON.stringify(nuevo.botonesPulsados)}`);
+    }
+    if ((nuevo.botonesPulsados || []).some(e => /watch to redeem/i.test(String(e || '')))) {
+        fallos.push('con el boton del 2026-11-17 se pulso «Watch to redeem»');
     }
 
     if (fallos.length) { console.log('\nFALLOS:'); fallos.forEach(f => console.log(' - ' + f)); process.exit(1); }
